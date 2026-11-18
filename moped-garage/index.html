@@ -436,6 +436,15 @@ if (!window.claude) window.claude = {
   const state = { repairs: 0, rides: 0, jobNo: 0, job: null, tool: null, open: false, busy: false, working: false, ready: false, riding: false, readyAt: 0 };
 
   // ---------- renderer ----------
+  // ---------- load tracker: each start-up stage is written down, so a crash shows where it happened next time ----------
+  const BOOT = (() => {
+    let prev = null; try { prev = localStorage.getItem('mg-boot'); } catch (e) {}
+    if (prev) { const d = document.createElement('div'); d.textContent = 'Last time the game stopped while: ' + prev + '. If it happens again, send a screenshot of this line.';
+      d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:99;background:#cf3b2d;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:10px;text-align:center';
+      document.body.appendChild(d); setTimeout(() => d.remove(), 15000); }
+    return { prev, mark(t) { try { localStorage.setItem('mg-boot', t); } catch (e) {} }, done() { try { localStorage.removeItem('mg-boot'); } catch (e) {} } };
+  })();
+  BOOT.mark('starting 3D graphics');
   // ---------- graphics settings: a preset plus render and simulation distance (like Minecraft / GTA) ----------
   // Phones and tablets start on Low so the page fits in their memory; everything is remembered per device.
   const GFX_PRESETS = {
@@ -571,6 +580,9 @@ if (!window.claude) window.claude = {
   function fbm(x, y, base, oct = 5) { let s = 0, amp = .5, f = base; for (let o = 0; o < oct; o++) { s += amp * vnoise(x * f, y * f, f); amp *= .5; f *= 2; } return s; }
   // Builds colour, normal and roughness maps from per-pixel functions on a tileable 0..1 square.
   function pbr(size, height, colour, rough, strength = 2, repeat = [1, 1]) {
+    // phones: half-size maps (a quarter of the memory); the patterns are sampled in u/v, so they look the same, softer
+    if (pbr.low === undefined) pbr.low = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && !window.matchMedia('(pointer: fine)').matches);
+    if (pbr.low) size = Math.max(128, size >> 1);
     const H = new Float32Array(size * size), C = new Uint8ClampedArray(size * size * 4), Rg = new Uint8ClampedArray(size * size * 4), Nm = new Uint8ClampedArray(size * size * 4);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) H[y * size + x] = height(x / size, y / size);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
@@ -657,7 +669,7 @@ if (!window.claude) window.claude = {
   }
 
   function buildGarage() {
-    makeTextures();
+    BOOT.mark('making textures'); makeTextures();
     const concrete = std(0xffffff, 1, 0, { ...TEX.concrete, envMapIntensity: .45, normalScale: new THREE.Vector2(.6, .6) });
     for (const t of [TEX.concrete.map, TEX.concrete.normalMap, TEX.concrete.roughnessMap]) t.repeat.set(1.2, 1.4);
     const floor = add(scene, new THREE.PlaneGeometry(WX + 4, 9.05), concrete, (WX - 4) / 2, 0, 2.725); floor.rotation.x = -PI / 2; floor.castShadow = false;
@@ -5460,7 +5472,11 @@ registerProcessor('moped-engine', MopedEngine);
           } else c = mix(vec3(.3, .32, .17), vec3(.42, .36, .26), n2) * (.8 + .3 * n3);
           diffuseColor.rgb = c; cRough = rough;` });
       const BK = new Map();
-      const bucket = (x, z) => { const k = Math.floor(x / 600) + ',' + Math.floor(z / 600); let b = BK.get(k); if (!b) BK.set(k, b = { pos: [], ru: [], ri: [], idx: [] }); return b; };
+      // growable typed arrays: the road mesh is millions of numbers, and plain arrays of them used most of a phone's memory
+      class GA { constructor(T) { this.T = T; this.a = new T(4096); this.n = 0; }
+        push(...v) { if (this.n + v.length > this.a.length) { const b = new this.T(Math.max(this.a.length * 2, this.n + v.length)); b.set(this.a); this.a = b; } for (let i = 0; i < v.length; i++) this.a[this.n++] = v[i]; return this.n; }
+        get length() { return this.n; } view() { return this.a.subarray(0, this.n); } }
+      const bucket = (x, z) => { const k = Math.floor(x / 600) + ',' + Math.floor(z / 600); let b = BK.get(k); if (!b) BK.set(k, b = { pos: new GA(Float32Array), ru: new GA(Float32Array), ri: new GA(Float32Array), idx: new GA(Uint32Array) }); return b; };
       const vtx = (b, x, y, z, s, l, dA, dB, hw, sw, kind, fl) => { b.pos.push(x, y, z); b.ru.push(s, l, dA, dB); b.ri.push(hw, sw, kind, fl); return b.pos.length / 3 - 1; };
       const KIND = { art: 0, st: 1, hwy: 2, conn: 3 };
       for (const C of CHAINS) {
@@ -5505,8 +5521,8 @@ registerProcessor('moped-engine', MopedEngine);
       }
       for (const b of BK.values()) {
         if (!b.idx.length) continue;
-        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3)); g.setAttribute('rU', new THREE.Float32BufferAttribute(b.ru, 4));
-        g.setAttribute('rI', new THREE.Float32BufferAttribute(b.ri, 4)); g.setIndex(b.idx); g.computeVertexNormals(); g.computeBoundingSphere();
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(b.pos.view(), 3)); g.setAttribute('rU', new THREE.BufferAttribute(b.ru.view(), 4));
+        g.setAttribute('rI', new THREE.BufferAttribute(b.ri.view(), 4)); g.setIndex(new THREE.BufferAttribute(b.idx.view(), 1)); g.computeVertexNormals(); g.computeBoundingSphere();
         const m = new THREE.Mesh(g, streetMat); m.receiveShadow = true; extraMeshes.push(m);
       }
 
@@ -7195,18 +7211,24 @@ registerProcessor('moped-engine', MopedEngine);
   }
 
   // ---------- start ----------
-  buildGarage(); buildToolbox(); buildTools();
+  BOOT.mark('building the garage'); buildGarage(); buildToolbox(); buildTools();
   const garageObjs = scene.children.filter(o => !o.isLight && !o.userData.shell && o !== door.group && !(o.parent && o.parent.isLight) && o.type !== 'Object3D');
-  { const t0 = performance.now(); buildCity(); city.userData.buildMs = Math.round(performance.now() - t0); }
+  BOOT.mark('building the city'); { const t0 = performance.now(); buildCity(); city.userData.buildMs = Math.round(performance.now() - t0); }
   studioEnv = scene.environment;
   setupFX();
   resize();
   if (camera.aspect < 1) { orbit.dist = 6.4; orbit.az = -.16; orbit.target.set(.1, .95, .3); }
   // compile the city's shaders now so opening the door doesn't stall
-  try { city.visible = true; renderer.compile(scene, camera); } catch (e) {} city.visible = false;
+  // (phones skip this: compiling every city shader at once can take down the browser's graphics process there)
+  BOOT.mark('preparing shaders');
+  if (!isPhone) { try { city.visible = true; renderer.compile(scene, camera); } catch (e) {} city.visible = false; }
   Object.assign(DEFAULT_ORBIT, { az: orbit.az, el: orbit.el, dist: orbit.dist, target: orbit.target.clone() });
   newJob(); renderStats(); renderStatus(); $('gname').textContent = garageName;
   openPicker('start');
+  BOOT.mark('drawing the first frames'); setTimeout(() => BOOT.mark('playing'), 9000);
+  // a normal close or switching away clears the record; only a crash leaves it behind
+  addEventListener('pagehide', () => BOOT.done());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) BOOT.done(); else BOOT.mark('playing'); });
   requestAnimationFrame(frame);
   if (document.fonts && document.fonts.load) {
     Promise.all([document.fonts.load('112px Bungee'), document.fonts.load('italic 700 82px Rubik'), document.fonts.load('700 64px Rubik')])
