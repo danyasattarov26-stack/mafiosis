@@ -94,6 +94,17 @@ h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(20px, 
 .spark { position: fixed; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); pointer-events: none; animation: spark .6s ease-out forwards; z-index: 5; }
 @keyframes spark { from { transform: translate(-50%, -50%) scale(1); opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.3); opacity: 0; } }
 .pop { position: fixed; font: 700 18px var(--font-body); color: var(--accent); pointer-events: none; animation: pop .9s ease-out forwards; text-shadow: 0 2px 0 rgba(0,0,0,.5); z-index: 5; }
+
+.gfxbtn { right: auto !important; left: 196px; }
+.gfxpanel { position: fixed; left: 196px; bottom: 50px; width: 270px; background: rgba(20,18,16,.95); color: #f4efe6; border-radius: 14px; padding: 12px 14px; font: 400 13px var(--font-body); z-index: 8; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: grid; gap: 10px; }
+.gfxpanel[hidden] { display: none; }
+.gfxpanel h3 { margin: 0; font: 600 14px var(--font-body); color: var(--accent); }
+.gfxpre { display: flex; gap: 6px; } .gfxpre button { flex: 1; padding: 7px 0; border-radius: 8px; border: 2px solid rgba(255,255,255,.15); background: none; color: var(--ink); font: 600 13px var(--font-body); cursor: pointer; }
+.gfxpre button.on { border-color: var(--accent); background: rgba(242,182,50,.15); color: var(--accent); }
+.gfxpanel label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); } .gfxpanel label b { color: var(--ink); font-weight: 600; }
+.gfxpanel input[type=range] { width: 100%; accent-color: #f2b632; }
+.gfxpanel p { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+@media (max-width: 640px) { .gfxbtn { left: auto; right: 14px !important; bottom: 52px !important; } .gfxpanel { left: auto; right: 14px; bottom: 92px; width: min(300px, calc(100vw - 28px)); } }
 @keyframes pop { from { transform: translate(-50%, -50%); opacity: 1; } to { transform: translate(-50%, -160%); opacity: 0; } }
 
 .error { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; font-size: 17px; background: var(--bg); }
@@ -226,6 +237,14 @@ body.riding .ticket { display: none; }
 <div class="tip" id="tip"></div>
 <div class="error" id="error"></div>
 <button class="fx" id="fx" aria-pressed="true">Effects: on</button>
+<button class="fx gfxbtn" id="gfxBtn">Graphics</button>
+<div class="gfxpanel" id="gfxPanel" hidden>
+  <h3>Graphics</h3>
+  <div class="gfxpre"><button data-p="low">Low</button><button data-p="medium">Medium</button><button data-p="high">High</button></div>
+  <label>Render distance <b id="gfxRv"></b><input type="range" id="gfxR" min="400" max="4300" step="100"></label>
+  <label>Simulation distance <b id="gfxSv"></b><input type="range" id="gfxS" min="120" max="370" step="10"></label>
+  <p>Render distance is how far you can see. Simulation distance is how far traffic runs around you. A preset also sets resolution, shadows and screen effects, and reloads the page.</p>
+</div>
 <button class="fx snd" id="snd" aria-pressed="true">Sound: on</button>
 <button class="fx ridebtn" id="rideBtn" hidden>Ride out<span class="k"> (E)</span></button>
 <div class="ride-hud" id="rideHud" hidden>
@@ -417,11 +436,28 @@ if (!window.claude) window.claude = {
   const state = { repairs: 0, rides: 0, jobNo: 0, job: null, tool: null, open: false, busy: false, working: false, ready: false, riding: false, readyAt: 0 };
 
   // ---------- renderer ----------
+  // ---------- graphics settings: a preset plus render and simulation distance (like Minecraft / GTA) ----------
+  // Phones and tablets start on Low so the page fits in their memory; everything is remembered per device.
+  const GFX_PRESETS = {
+    low:    { pr: 1,   fx: false, aa: false, shadow: 1024, render: 900,  sim: 200 },
+    medium: { pr: 1.5, fx: false, aa: true,  shadow: 2048, render: 2000, sim: 300 },
+    high:   { pr: 2,   fx: true,  aa: true,  shadow: 2048, render: 4300, sim: 370 },
+  };
+  const isPhone = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && !window.matchMedia('(pointer: fine)').matches);
+  const GFX = (() => {
+    let saved = null; try { saved = JSON.parse(localStorage.getItem('mg-gfx') || 'null'); } catch (e) {}
+    const preset = saved && GFX_PRESETS[saved.preset] ? saved.preset : (isPhone ? 'low' : 'high');
+    const g = { preset, ...GFX_PRESETS[preset] };
+    if (saved && saved.preset === preset) { if (saved.render) g.render = saved.render; if (saved.sim) g.sim = saved.sim; }
+    g.cars = () => Math.max(12, Math.min(85, Math.round(85 * (g.sim / 370) ** 2))); // same traffic density at any distance
+    g.save = () => { try { localStorage.setItem('mg-gfx', JSON.stringify({ preset: g.preset, render: g.render, sim: g.sim })); } catch (e) {} };
+    return g;
+  })();
   const canvas = $('c');
   let renderer;
-  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: GFX.aa, powerPreference: 'high-performance' }); }
   catch (e) { showError("Your browser couldn't start 3D graphics (WebGL). Try another browser or turn on hardware acceleration."); return; }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, GFX.pr));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -432,6 +468,9 @@ if (!window.claude) window.claude = {
   scene.background = new THREE.Color(0xc5d6e4);
   scene.fog = new THREE.Fog(0xc5d6e4, 350, 4300);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.08, 5000);
+  // render distance: fog closes in and the camera stops drawing just beyond it
+  function applyRender() { const R = GFX.render; scene.fog.far = R; scene.fog.near = Math.min(350, R * .3); camera.far = Math.min(5000, R * 1.16); camera.updateProjectionMatrix(); }
+  applyRender();
   const GL = {}, FX = {};
   const HELP_GARAGE = 'Drag to look around · Scroll to zoom · Keys 1–4 pick tools · Esc puts it back · G opens the garage door · E rides out';
   const orbit = { az: -0.36, el: 0.22, dist: 5.0, min: 1.6, max: 6.5, target: V(0.8, 0.92, 0.3) };
@@ -688,7 +727,7 @@ if (!window.claude) window.claude = {
     GL.hemi = new THREE.HemisphereLight(0xcfd9e8, 0x2e2822, .14); scene.add(GL.hemi);
     const spot = new THREE.SpotLight(0xffe2b0, 1.05, 9, .9, .55, 1.4);
     spot.position.set(0, 3.1, .35); spot.target.position.set(0, 0, .25);
-    spot.castShadow = true; spot.shadow.mapSize.set(2048, 2048); spot.shadow.bias = -.0003; spot.shadow.normalBias = .01;
+    spot.castShadow = true; spot.shadow.mapSize.set(GFX.shadow, GFX.shadow); spot.shadow.bias = -.0003; spot.shadow.normalBias = .01;
     scene.add(spot, spot.target); GL.spot = spot;
     const fill = new THREE.DirectionalLight(0xcfd8ff, .16); fill.position.set(-3, 3, 5); scene.add(fill);
     const rim = new THREE.DirectionalLight(0x9ab8ff, .42); rim.position.set(2, 3.5, -4); scene.add(rim);
@@ -2843,7 +2882,7 @@ registerProcessor('moped-engine', MopedEngine);
   // ---------- post-processing: ambient occlusion, bloom, vignette and grain ----------
   let composer = null, fxPass = null, fxOn = true;
   function setupFX() {
-    if (!THREE.EffectComposer || !THREE.SSAOPass || !THREE.UnrealBloomPass || !THREE.ShaderPass) { $('fx').hidden = true; return; }
+    if (!GFX.fx || !THREE.EffectComposer || !THREE.SSAOPass || !THREE.UnrealBloomPass || !THREE.ShaderPass) { $('fx').hidden = true; fxOn = false; return; }
     try {
       composer = new THREE.EffectComposer(renderer);
       if (THREE.RenderPass) { FX.rp = new THREE.RenderPass(scene, camera); FX.rp.enabled = false; composer.addPass(FX.rp); }
@@ -2872,6 +2911,20 @@ registerProcessor('moped-engine', MopedEngine);
       composer.addPass(fxPass);
     } catch (e) { composer = null; $('fx').hidden = true; }
   }
+  // graphics menu
+  (() => {
+    const P = $('gfxPanel'), R = $('gfxR'), S = $('gfxS');
+    const show = () => { $('gfxRv').textContent = GFX.render + ' m'; $('gfxSv').textContent = GFX.sim + ' m · ' + GFX.cars() + ' cars'; R.value = GFX.render; S.value = GFX.sim;
+      P.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === GFX.preset)); };
+    $('gfxBtn').addEventListener('click', e => { e.stopPropagation(); P.hidden = !P.hidden; show(); });
+    for (const el of [P, $('gfxBtn')]) for (const ev of ['pointerdown', 'mousedown', 'touchstart', 'wheel']) el.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+    R.addEventListener('input', () => { GFX.render = +R.value; applyRender(); GFX.save(); show(); });
+    S.addEventListener('input', () => { GFX.sim = +S.value; GFX.save(); show(); });
+    P.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.p === GFX.preset) return;
+      GFX.preset = b.dataset.p; const d = GFX_PRESETS[GFX.preset]; GFX.render = d.render; GFX.sim = d.sim; GFX.save(); location.reload();
+    }));
+  })();
   $('fx').addEventListener('click', () => { fxOn = !fxOn; $('fx').textContent = `Effects: ${fxOn ? 'on' : 'off'}`; $('fx').setAttribute('aria-pressed', String(fxOn)); });
 
   // ---------- the city outside the garage door ----------
@@ -5689,7 +5742,7 @@ registerProcessor('moped-engine', MopedEngine);
     skyEnv.keep = true;
 
     sun = new THREE.DirectionalLight(0xfff0d8, 1.25); sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0005; sun.shadow.normalBias = .04;
+    sun.shadow.mapSize.set(GFX.shadow, GFX.shadow); sun.shadow.bias = -.0005; sun.shadow.normalBias = .04;
     Object.assign(sun.shadow.camera, { near: 10, far: 900, left: -16, right: 16, top: 16, bottom: -16 }); sun.shadow.camera.updateProjectionMatrix();
     scene.add(sun, sun.target);
     skyLight = new THREE.HemisphereLight(0xe2e6ea, 0x8a7a5c, 0); scene.add(skyLight);
@@ -5955,14 +6008,14 @@ registerProcessor('moped-engine', MopedEngine);
             let near = 0; for (let a = L.aS; a < L.aE; a += 40) { const [x, z] = L.pos(a); if (Math.hypot(x - px, z - pz) < 370) near += 40; }
             want += near / (L.route.cls === 'hwy' ? 220 : L.route.cls === 'art' ? 80 : 115);
           }
-          target = Math.min(MAXCARS, Math.round(want));
+          target = Math.min(MAXCARS, GFX.cars(), Math.round(want));
         }
         const drop = i => { const c = cars[i]; if (c.resNode) c.resNode.occ.delete(c); cars.splice(i, 1); };
-        for (let i = cars.length - 1; i >= 0; i--) { const c = cars[i], d = Math.hypot(c.x - px, c.z - pz); if (d > 420 || (c.waitT > 30 && Math.hypot(c.x - cp.x, c.z - cp.z) > 80)) drop(i); }
+        for (let i = cars.length - 1; i >= 0; i--) { const c = cars[i], d = Math.hypot(c.x - px, c.z - pz); if (d > GFX.sim * 1.14 || (c.waitT > 30 && Math.hypot(c.x - cp.x, c.z - cp.z) > 80)) drop(i); }
         let tries = jumped ? 900 : 6;
         while (cars.length < target && tries-- > 0 && laneNear.length) {
           const L = laneNear[Math.floor(Math.random() * laneNear.length)], a = L.aS + (L.aE - L.aS) * (.1 + .8 * Math.random()), [x, z] = L.pos(a), d = Math.hypot(x - px, z - pz);
-          if (d > 370 || d < (jumped ? 14 : 110)) continue;
+          if (d > GFX.sim || d < (jumped ? 14 : Math.min(110, GFX.sim * .3))) continue;
           if (cars.some(c => c.lane === L && Math.abs(c.a - a) < 16) || cars.some(c => Math.abs(c.x - x) < 7 && Math.abs(c.z - z) < 7)) continue;
           spawn(L, a);
         }
