@@ -253,6 +253,7 @@ body.riding .ticket { display: none; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
@@ -2099,6 +2100,26 @@ if (!window.claude) window.claude = {
     for (const x of [-.09, .09]) rbox(lidPivot, .018, .05, .03, .006, chrome, x, .07, D / 2);
     const grip = add(lidPivot, new THREE.CylinderGeometry(.014, .014, .2, 18), rubber, 0, .095, D / 2); grip.rotation.z = PI / 2;
     for (let i = 0; i < 8; i++) add(lidPivot, new THREE.TorusGeometry(.0145, .0018, 6, 18), rubber, -.07 + i * .02, .095, D / 2).rotation.y = PI / 2;
+    upgradeToolbox();
+  }
+
+  // Real models from Patch's library (Poly Haven, CC0), at full detail: a metal toolbox takes the drawn one's place and
+  // footprint, and a cross-pein hammer lies beside it. The drawn toolbox stays where it was, hidden, so clicking it and
+  // its lid still work exactly as before.
+  function upgradeToolbox() {
+    if (!THREE.GLTFLoader) return;
+    const L = new THREE.GLTFLoader(), shade = m => m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    L.load('models/metal_toolbox.glb', g => {
+      const m = g.scene, box = new THREE.Box3().setFromObject(m), s = box.getSize(new THREE.Vector3());
+      m.scale.setScalar(.62 / s.x); box.setFromObject(m);
+      const c = box.getCenter(new THREE.Vector3()); m.position.set(-c.x, -box.min.y, -c.z);
+      shade(m); toolbox.traverse(o => { if (o.isMesh) o.visible = false; }); toolbox.add(m);
+    }, undefined, e => console.warn('toolbox model', e));
+    L.load('models/cross_pein_hammer.glb', g => {
+      const m = g.scene, w = new THREE.Group(); m.rotation.x = -PI / 2; w.add(m); // lying flat on the floor
+      const box = new THREE.Box3().setFromObject(w), c = box.getCenter(new THREE.Vector3());
+      w.position.set(.55 - c.x, .001 - box.min.y, .08 - c.z); w.rotation.y = .5; shade(w); toolbox.add(w);
+    }, undefined, e => console.warn('hammer model', e));
   }
 
   const gaugeTex = canvasTex(128, 128, (g, w, h) => {
