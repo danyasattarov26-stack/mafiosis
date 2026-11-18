@@ -10,7 +10,7 @@ import { Weapons, makeGunPrefab } from './weapons.js';
 import { Level, LEVELS, PHRASES } from './levels.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
-import { HUD } from './hud.js';
+import { HUD, XRHud } from './hud.js';
 
 const TITLE = 'STANDSTILL';
 const Q = new URLSearchParams(location.search), DEBUG = Q.has('debug'), NOLOCK = DEBUG && Q.has('nolock');
@@ -30,7 +30,7 @@ try {
 }
 renderer.setPixelRatio(Math.min(2, devicePixelRatio));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.xr.enabled = true;
 document.getElementById('app').appendChild(renderer.domElement);
 
@@ -109,6 +109,7 @@ function loadLevel(i) {
   rec.frames = []; rec.events = []; rec.lastG = -1;
   HUD.hideScreens(); HUD.banner('', false); HUD.show('replay', false); HUD.level(i, LEVELS.length); HUD.ammo(weapons.armed, weapons.ammo);
   weapons.vm.visible = !xr; state = 'play';
+  if (xr) { player.rig.rotation.set(0, 0, 0); xrArm(); }
 }
 
 function die() {
@@ -158,7 +159,7 @@ document.getElementById('hud').addEventListener('pointerdown', e => {
   else if (state === 'replay' && e.pointerType !== 'mouse') nextLevel();
 });
 renderer.domElement.addEventListener('pointerdown', e => { if (state === 'dead' && e.pointerType !== 'mouse') loadLevel(cur); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') { state = 'paused'; HUD.show('pause'); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play' && !xr) { state = 'paused'; HUD.show('pause'); } });
 
 function handleActions() {
   for (const a of player.actions.splice(0)) {
@@ -172,57 +173,130 @@ function handleActions() {
   }
 }
 
-// ---------- WebXR: standing room-scale, no locomotion ----------
+// ---------- WebXR (Quest): standing room-scale, plus thumbstick locomotion and snap turn ----------
+// Left stick moves (it counts as moving, so it runs time), right stick snap-turns 30°.
+// Trigger fires the gun in that hand; grip grabs a pistol near the hand, releasing it with a swing throws it,
+// releasing it gently drops it; a fast swing into an enemy is a punch. A / X or the trigger restarts and skips.
+const AMMO_PIP = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
 const hands = [0, 1].map(i => {
   const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i);
   player.rig.add(ray, grip);
-  const fist = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: 0x1b1b1b, flatShading: true })); grip.add(fist);
-  const gun = gunPrefab.clone(); gun.visible = false; gun.rotation.x = -0.7; gun.position.set(0, -0.02, 0.03); grip.add(gun);
-  const h = { ray, grip, gun, armed: false, ammo: 0, last: V(), speed: 0, vel: V() };
+  const fist = new THREE.Mesh(new THREE.DodecahedronGeometry(0.042, 0), new THREE.MeshStandardMaterial({ color: 0x1b1b1b, flatShading: true, roughness: 0.6 })); fist.scale.set(1, 0.85, 1.25); grip.add(fist);
+  // the gun rides the aim ray, so the barrel points exactly where the controller points
+  const gun = gunPrefab.clone(); gun.visible = false; gun.position.set(0, -0.045, 0.07); ray.add(gun);
+  const pips = []; for (let k = 0; k < 6; k++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.004, 0.012), AMMO_PIP); p.position.set(0, 0.062, 0.06 - k * 0.016); gun.add(p); pips.push(p); }
+  const h = { ray, grip, gun, pips, fist, armed: false, ammo: 0, last: V(), speed: 0, vel: V(), src: null, btn: false };
+  h.setGun = (armed, ammo = 0) => { h.armed = armed; h.ammo = ammo; gun.visible = armed; fist.visible = !armed; h.pips.forEach((p, k) => { p.visible = k < ammo; }); };
+  ray.addEventListener('connected', e => { h.src = e.data; });
+  ray.addEventListener('disconnected', () => { h.src = null; });
   ray.addEventListener('selectstart', () => {
-    if (state !== 'play' || !h.armed) return;
+    if (state !== 'play') return xrButton();
+    if (!h.armed) return;
     Time.kick(0.15);
     if (h.ammo <= 0) { Audio.play('dry'); return; }
-    h.ammo--; const m = gun.getObjectByName('muzzle').getWorldPosition(V()), d = new THREE.Vector3(0, 0, -1).applyQuaternion(gun.getWorldQuaternion(new THREE.Quaternion()));
+    h.setGun(true, h.ammo - 1);
+    const m = gun.getObjectByName('muzzle').getWorldPosition(V()), d = new THREE.Vector3(0, 0, -1).applyQuaternion(ray.getWorldQuaternion(new THREE.Quaternion()));
     weapons.fire('player', m, d, 40); Audio.play('shot');
+    const gp = h.src && h.src.gamepad; if (gp && gp.hapticActuators && gp.hapticActuators[0]) gp.hapticActuators[0].pulse(0.6, 60);
   });
   grip.addEventListener('squeezestart', () => {
     if (state !== 'play' || h.armed) return;
     const p = grip.getWorldPosition(V());
-    const k = weapons.pick.find(k => k.on && k.o.position.distanceTo(p) < 0.45);
-    if (k) { k.on = false; k.o.visible = false; h.armed = true; h.ammo = k.ammo; gun.visible = true; Audio.play('pickup'); }
+    const k = weapons.pick.find(k => k.on && k.o.position.distanceTo(p) < 0.55);
+    if (k) { k.on = false; k.o.visible = false; h.setGun(true, k.ammo); Audio.play('pickup'); }
   });
   grip.addEventListener('squeezeend', () => {
-    if (state !== 'play' || !h.armed || h.vel.length() < 1) return;
+    if (state !== 'play' || !h.armed) return;
+    const p = gun.getWorldPosition(V());
+    if (h.vel.length() < 1.2) { weapons.dropPickup(p, h.ammo); h.setGun(false); return; } // gentle release: drop it
     const t = weapons.thrown.find(x => !x.on); if (!t) return;
-    gun.getWorldPosition(t.o.position); t.v.copy(h.vel).multiplyScalar(1.3); t.w.set(8, 1, 0); t.on = true; t.o.visible = true; t.ammo = h.ammo;
-    h.armed = false; h.ammo = 0; gun.visible = false; Time.kick(0.15); Audio.play('whoosh');
+    t.o.position.copy(p); t.o.quaternion.copy(ray.getWorldQuaternion(new THREE.Quaternion()));
+    t.v.copy(h.vel).multiplyScalar(1.4); t.w.set(8, 1, 0); t.on = true; t.o.visible = true; t.ammo = h.ammo;
+    h.setGun(false); Time.kick(0.15); Audio.play('whoosh');
   });
   return h;
 });
-const xrHead = { last: V(), speed: 0 };
+const xrHead = { last: V(), speed: 0, turnReady: true };
+XRHud.init(camera);
+
+function xrButton() { // trigger or A / X outside of play: restart, skip, play again
+  if (state === 'dead') loadLevel(cur);
+  else if (state === 'replay') nextLevel();
+  else if (state === 'clear') clearT = 0;
+  else if (state === 'end' || state === 'start') begin();
+  else if (state === 'paused') { state = 'play'; HUD.show('pause', false); }
+}
+
+function xrArm() { hands[0].setGun(false); hands[1].setGun(true, 6); } // every room starts with a pistol in the right hand
+
+renderer.xr.setFoveation(1);
 renderer.xr.addEventListener('sessionstart', () => {
-  xr = true; Audio.init(); weapons.vm.visible = false;
-  if (state !== 'play') loadLevel(state === 'end' ? 0 : cur);
-  hands[1].armed = true; hands[1].ammo = 6; hands[1].gun.visible = true; // start with a gun in the right hand
+  xr = true; Audio.init(); weapons.vm.visible = false; HUD.hideScreens();
+  const s = renderer.xr.getSession();
+  s.addEventListener('visibilitychange', () => { // the Quest menu or a guardian break hides the session
+    if (s.visibilityState !== 'visible' && state === 'play') state = 'paused';
+    else if (s.visibilityState === 'visible' && state === 'paused') state = 'play';
+  });
+  if (state !== 'play') loadLevel(state === 'end' || state === 'start' ? 0 : cur);
+  if (state === 'start') { deaths = 0; playTime = 0; }
+  xrArm();
 });
-renderer.xr.addEventListener('sessionend', () => { xr = false; weapons.vm.visible = true; state = 'paused'; HUD.show('pause'); });
+renderer.xr.addEventListener('sessionend', () => {
+  xr = false; weapons.vm.visible = true; XRHud.hide(); player.rig.rotation.set(0, 0, 0); player.apply();
+  if (state === 'play') { state = 'paused'; HUD.show('pause'); }
+});
 if (navigator.xr && navigator.xr.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then(ok => { if (ok) document.body.appendChild(VRButton.createButton(renderer)); }).catch(() => {});
 }
 
+const _hp = V(), _fw = V();
+function xrLocomotion(realDt) {
+  for (const h of hands) {
+    const gp = h.src && h.src.gamepad; if (!gp) continue;
+    const ax = gp.axes, x = ax.length > 2 ? ax[2] : ax[0] || 0, y = ax.length > 3 ? ax[3] : ax[1] || 0;
+    const a = gp.buttons[4] && gp.buttons[4].pressed; // A on the right controller, X on the left
+    if (a && !h.btn) xrButton(); h.btn = !!a;
+    if (state !== 'play') continue;
+    if (h.src.handedness === 'left' && Math.hypot(x, y) > 0.15) {
+      camera.getWorldDirection(_fw).setY(0).normalize();
+      const rx = -_fw.z, rz = _fw.x, sp = 2.6 * realDt;
+      const head = camera.getWorldPosition(_hp), before = head.clone();
+      head.x += (_fw.x * -y + rx * x) * sp; head.z += (_fw.z * -y + rz * x) * sp;
+      level.collideCircle(head, player.radius);
+      player.rig.position.x += head.x - before.x; player.rig.position.z += head.z - before.z;
+    }
+    if (h.src.handedness === 'right') {
+      if (Math.abs(x) > 0.7 && xrHead.turnReady) {
+        const ang = x > 0 ? -Math.PI / 6 : Math.PI / 6, head = camera.getWorldPosition(_hp);
+        const off = player.rig.position.clone().sub(head).applyAxisAngle(new THREE.Vector3(0, 1, 0), ang);
+        player.rig.position.copy(head).add(off); player.rig.rotation.y += ang; xrHead.turnReady = false;
+      } else if (Math.abs(x) < 0.3) xrHead.turnReady = true;
+    }
+  }
+}
+
 function updateXR(realDt) {
+  xrLocomotion(realDt);
   const head = camera.getWorldPosition(V());
-  xrHead.speed = realDt > 0 ? head.distanceTo(xrHead.last) / realDt : 0; xrHead.last.copy(head);
+  xrHead.speed = realDt > 0 ? Math.min(20, head.distanceTo(xrHead.last) / realDt) : 0; xrHead.last.copy(head);
   player.pos.set(head.x, 0, head.z); player.eyeY = head.y;
   let handMax = 0;
   for (const h of hands) {
     const p = h.grip.getWorldPosition(V());
-    h.vel.copy(p).sub(h.last).divideScalar(Math.max(1e-4, realDt)); h.last.copy(p); h.speed = h.vel.length();
+    h.vel.copy(p).sub(h.last).divideScalar(Math.max(1e-4, realDt)); h.last.copy(p); h.speed = Math.min(30, h.vel.length());
     handMax = Math.max(handMax, h.speed);
-    if (state === 'play' && h.speed > 2.5 && !h.armed) ctx.punch(0.45, p, h.vel.clone().setY(0).normalize()) && Audio.play('punch');
+    if (state === 'play' && h.speed > 2.5 && ctx.punch(0.45, p, h.vel.clone().setY(0).normalize())) Audio.play('punch');
   }
   return { xr: true, headSpeed: xrHead.speed, handSpeed: handMax };
+}
+
+function xrPanel() { // what the floating panel says for each state
+  if (state === 'dead') XRHud.show('YOU DIED', 'Trigger or A to restart', true);
+  else if (state === 'clear') XRHud.show(PHRASES[cur % PHRASES.length], '', true);
+  else if (state === 'replay') XRHud.show('REPLAY · A to skip', '', true, true);
+  else if (state === 'end') XRHud.show(TITLE, `All ${LEVELS.length} rooms · deaths ${deaths}\nTrigger to play again`);
+  else if (state === 'paused') XRHud.show('PAUSED', 'Trigger to resume');
+  else XRHud.hide();
 }
 
 // ---------- replay ----------
@@ -274,7 +348,8 @@ renderer.setAnimationLoop(now => {
   } else if (state === 'clear') {
     clearT -= realDt; fx.update(realDt * 0.2);
     if (clearT <= 0) startReplay();
-  } else if (state === 'replay') { playReplay(realDt); cam = replayCam; }
+  } else if (state === 'replay') { playReplay(realDt); if (!xr) cam = replayCam; } // in VR the replay plays around you
+  if (xr) xrPanel();
   Audio.setRate(state === 'play' ? Time.scale : state === 'replay' ? 1 : 0.3);
   renderer.render(scene, cam);
   if (DEBUG) {
@@ -284,5 +359,5 @@ renderer.setAnimationLoop(now => {
   }
 });
 
-if (DEBUG) window.__game = { Time, weapons, enemies, player, ctx, camera, get state() { return state; }, begin, loadLevel, V,
+if (DEBUG) window.__game = { Time, weapons, enemies, player, ctx, camera, renderer, hands, get state() { return state; }, begin, loadLevel, V,
   fireTest() { const p = V().set(player.pos.x, 1.5, player.pos.z - 1); weapons.fire('test', p, V().set(0, 0, -1), 18); return weapons.n - 1; } };

@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 /* DOM HUD: crosshair, ammo pips, level number; plus the start, pause, death, banner, replay and end screens. */
 const $ = s => document.querySelector(s);
 
@@ -39,4 +40,28 @@ export const HUD = {
   banner(text, on = true) { const b = $('#hud .banner'); b.querySelector('b').textContent = text; b.classList.toggle('on', on); },
   end(stats) { $('#hud .end .stats').innerHTML = stats; this.show('end'); },
   debug(text) { const d = $('#hud .debug'); d.hidden = false; d.textContent = text; },
+};
+
+/* In VR the DOM is invisible, so messages go on a panel floating in front of the headset. */
+export const XRHud = {
+  init(camera) {
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+    this.c = c; this.g = c.getContext('2d'); this.tex = new THREE.CanvasTexture(c); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthTest: false, depthWrite: false, fog: false }));
+    this.mesh.position.set(0, -0.05, -1.4); this.mesh.renderOrder = 999; this.mesh.visible = false; camera.add(this.mesh); this.key = '';
+  },
+  show(title, sub = '', red = false, small = false) {
+    const key = title + '|' + sub + red + small; this.mesh.visible = true; if (key === this.key) return; this.key = key;
+    const g = this.g, W = 1024, H = 512; g.clearRect(0, 0, W, H);
+    g.fillStyle = red ? 'rgba(232,38,43,0.96)' : 'rgba(21,21,21,0.82)';
+    const h = small ? 120 : H, y = small ? 0 : 0; g.beginPath(); g.roundRect(small ? 212 : 0, y, small ? 600 : W, h, 36); g.fill();
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (small) { g.font = 'bold 54px Arial Black, Arial, sans-serif'; g.fillText(title, W / 2, 62); }
+    else {
+      g.font = 'italic 900 132px Arial Black, Arial, sans-serif'; g.fillText(title, W / 2, sub ? 200 : H / 2, W - 60);
+      if (sub) { g.font = 'bold 50px Arial, sans-serif'; sub.split('\n').forEach((l, i) => g.fillText(l, W / 2, 340 + i * 64, W - 60)); }
+    }
+    this.tex.needsUpdate = true;
+  },
+  hide() { if (this.mesh) { this.mesh.visible = false; this.key = ''; } },
 };
