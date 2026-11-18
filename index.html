@@ -20,7 +20,7 @@
     #hud .flash { position: absolute; inset: 0; opacity: 0; }
     #hud .banner { position: absolute; inset: 0; display: grid; place-items: center; background: var(--red); opacity: 0; transition: opacity .12s; }
     #hud .banner.on { opacity: 1; }
-    #hud .banner b { color: #fff; font-size: clamp(52px, 15vw, 210px); line-height: .9; letter-spacing: -.02em; text-align: center; padding: 0 16px; font-style: italic; }
+    #hud .banner > b { color: #fff; font-size: clamp(52px, 15vw, 210px); line-height: .9; letter-spacing: -.02em; text-align: center; padding: 0 16px; font-style: italic; }
     #hud .tag { position: absolute; left: 50%; top: max(16px, env(safe-area-inset-top)); transform: translateX(-50%); background: var(--red); color: #fff; padding: 8px 14px; font-size: 14px; letter-spacing: .14em; white-space: nowrap; }
     #hud .tag span { opacity: .8; font-size: 12px; }
     #hud .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px 16px; pointer-events: auto; cursor: pointer; background: rgba(242,242,242,.82); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
@@ -43,6 +43,24 @@
     #touch button.fire { grid-row: span 2; width: 92px; height: 92px; align-self: center; background: rgba(232,38,43,.85); }
     #loading, #nowebgl { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; background: #f2f2f2; font-size: 18px; letter-spacing: .14em; padding: 24px; text-align: center; }
     body.replaying #hud .xh, body.replaying #hud .ammo { display: none; }
+    #hud .ammo i.wide { width: 16px; }
+    #hud .ammo span { margin-right: 6px; }
+    #hud .banner { flex-direction: column; }
+    #hud .banner.on { display: flex; align-items: center; justify-content: center; }
+    #hud .banner .res { color: #fff; font: 700 clamp(15px, 2.2vw, 22px)/1.5 "Helvetica Neue", Arial, sans-serif; text-align: center; margin-top: 18px; padding: 0 16px; }
+    #hud .banner .small { color: rgba(255,255,255,.9); }
+    #hud .banner ol.lb { color: #fff; }
+    #hud .banner .res .rank { font: italic 900 clamp(28px, 5vw, 54px) "Arial Black", Arial, sans-serif; display: block; }
+    #hud .modes { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 8px 0 10px; }
+    #hud button.go { border: 0; cursor: pointer; font-family: "Arial Black", Arial, sans-serif; }
+    #hud button.go.alt { background: var(--red); }
+    #hud label.name { display: flex; flex-direction: column; gap: 6px; align-items: center; font: 13px "Helvetica Neue", Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #555; margin-bottom: 6px; }
+    #hud label.name input { font: 20px "Arial Black", Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; text-align: center; width: min(260px, 80vw); padding: 8px 10px; border: 2px solid var(--ink); background: #fff; color: var(--ink); }
+    #hud ol.lb { list-style: none; counter-reset: n; margin: 8px auto 0; padding: 0; width: min(340px, 86vw); text-align: left; font: 15px/1.7 "Helvetica Neue", Arial, sans-serif; }
+    #hud ol.lb li { counter-increment: n; display: flex; gap: 10px; border-bottom: 1px solid rgba(0,0,0,.1); }
+    #hud .banner ol.lb li { border-color: rgba(255,255,255,.3); }
+    #hud ol.lb li::before { content: counter(n) "."; width: 28px; opacity: .6; }
+    #hud ol.lb li span { flex: 1; } #hud ol.lb li.me { font-weight: 700; }
     #loading[hidden], #nowebgl[hidden], #touch[hidden] { display: none; }
     #VRButton { z-index: 4 !important; }
   </style>

@@ -42,6 +42,10 @@ const SOUNDS = {
   },
   pickup() { tone({ type: 'square', f0: 700, peak: 0.07, dec: 0.05 }); tone({ type: 'square', f0: 1050, peak: 0.07, dec: 0.06, at: 0.06 }); },
   death() { tone({ type: 'sawtooth', f0: 220, f1: 35, peak: 0.4, dec: 1.2 }); noiseHit({ type: 'lowpass', freq: 600, peak: 0.5, dec: 1 }); },
+  rifle() { noiseHit({ freq: 1500, q: 0.6, peak: 0.7, dec: 0.45, sweep: 250 }); tone({ type: 'triangle', f0: 95, f1: 30, peak: 0.8, dec: 0.45 }); },
+  swish() { noiseHit({ freq: 900, q: 3, peak: 0.3, dec: 0.28, sweep: 3800 }); },
+  clang() { tone({ type: 'square', f0: 3100, f1: 2400, peak: 0.07, dec: 0.25 }); tone({ type: 'sine', f0: 4700, peak: 0.05, dec: 0.4 }); noiseHit({ type: 'highpass', freq: 5000, peak: 0.15, dec: 0.06 }); },
+  glass() { noiseHit({ type: 'highpass', freq: 3500, peak: 0.35, dec: 0.4 }); for (let i = 0; i < 4; i++) tone({ type: 'sine', f0: 2500 + Math.random() * 3000, peak: 0.05, dec: 0.25 + Math.random() * 0.3, at: i * 0.02 }); },
   clear() { [523, 659, 784, 1047].forEach((f, i) => tone({ type: 'triangle', f0: f, peak: 0.18, dec: 0.9, at: i * 0.07 })); },
 };
 

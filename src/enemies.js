@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { Audio } from './audio.js';
+import { KINDS } from './weapons.js';
 
 export const ENEMY_MAT = new THREE.MeshStandardMaterial({ color: 0xe8262b, roughness: 0.35, flatShading: true });
-const HEIGHT = 1.8, RADIUS = 0.32, SPEED = 1.6, BULLET_SPEED = 18, SPREAD = THREE.MathUtils.degToRad(1.5);
+const HEIGHT = 1.8, RADIUS = 0.32, SPEED = 1.6;
+// enemy weapons: bullet speed (game m/s), spread, first shot after seeing you, then the gap between shots
+const ARMS = {
+  pistol: { speed: 18, spread: THREE.MathUtils.degToRad(1.5), first: 1.2, gap: [1.8, 3.0], sound: 'enemyShot' },
+  rifle: { speed: 26, spread: THREE.MathUtils.degToRad(0.8), first: 1.6, gap: [3.0, 4.0], sound: 'rifle' },
+};
 const V = () => new THREE.Vector3();
 const _a = V(), _b = V(), _c = V(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const BONES = { thighL: /^thigh_l$|left.?up.?leg/i, thighR: /^thigh_r$|right.?up.?leg/i, calfL: /^calf_l$|left.?leg$/i, calfR: /^calf_r$|right.?leg$/i,
@@ -31,7 +37,7 @@ function pointBone(bone, child, dirWorld) {
   Turn the loaded enemy model into a template: red flat material, 1.8 m tall, feet on y=0, facing +z,
   arms posed to aim, a pistol in the right hand. Falls back to a capsule if the model is missing or broken.
 */
-export function makeEnemyTemplate(scene3d, gunPrefab, log) {
+export function makeEnemyTemplate(scene3d, prefabs, log) {
   const root = new THREE.Group(); root.name = 'enemy';
   let model = scene3d, ok = !!model;
   if (ok) {
@@ -68,14 +74,17 @@ export function makeEnemyTemplate(scene3d, gunPrefab, log) {
     cap.position.y = 0.9; cap.castShadow = true; root.add(cap);
     const hand = new THREE.Object3D(); hand.position.set(-0.22, 1.35, 0.45); root.add(hand); bones.handR = hand;
   }
-  // pistol in the right hand: aim along +z, the prefab's forward is -z
-  const gun = gunPrefab.clone(); gun.name = 'egun';
+  // a pistol and a rifle in the right hand (one shown at a time): aim along +z, the prefabs' forward is -z
   root.updateWorldMatrix(true, true);
-  const hand = bones.handR, hp = hand.getWorldPosition(V());
-  _m1.compose(hp.add(V().set(0, -0.01, 0.04)), new THREE.Quaternion().setFromAxisAngle(V().set(0, 1, 0), Math.PI), V().set(1, 1, 1));
-  _m2.copy(hand.matrixWorld).invert().multiply(_m1);
-  _m2.decompose(gun.position, gun.quaternion, gun.scale);
-  hand.add(gun);
+  const hand = bones.handR;
+  for (const kind of ['pistol', 'rifle']) {
+    const gun = prefabs[kind].clone(); gun.name = 'egun_' + kind;
+    const hp = hand.getWorldPosition(V());
+    _m1.compose(hp.add(V().set(0, -0.01, 0.04)), new THREE.Quaternion().setFromAxisAngle(V().set(0, 1, 0), Math.PI), V().set(1, 1, 1));
+    _m2.copy(hand.matrixWorld).invert().multiply(_m1);
+    _m2.decompose(gun.position, gun.quaternion, gun.scale);
+    hand.add(gun);
+  }
   // per-bone axes for the procedural walk: the root's x axis (pitch) and z axis (roll) in each bone's own frame
   const axes = {};
   for (const k of ['thighL', 'thighR', 'calfL', 'calfR', 'spine', 'head', 'upperR']) {
@@ -93,13 +102,18 @@ class Enemy {
     this.root.visible = false; scene.add(this.root);
     this.i = i; this.bones = findBones(this.root); this.axes = template.userData.axes;
     this.rest = {}; for (const k in this.axes) if (this.bones[k]) this.rest[k] = this.bones[k].quaternion.clone();
-    this.gun = this.root.getObjectByName('egun'); this.muzzle = this.gun.getObjectByName('muzzle');
-    this.pos = V(); this.state = 'off';
+    this.guns = { pistol: this.root.getObjectByName('egun_pistol'), rifle: this.root.getObjectByName('egun_rifle') };
+    this.weapon = 'pistol'; this.pos = V(); this.state = 'off';
   }
 
-  spawn(x, z) {
-    this.pos.set(x, 0, z); this.ry = 0; this.phase = Math.random() * 6; this.state = 'walk'; this.armed = true; this.gun.visible = true;
-    this.seen = false; this.shotT = 1.2; this.stunT = 0; this.punchT = 0; this.walkW = 0; this.lean = 0; this.root.visible = true;
+  get gun() { return this.guns[this.weapon]; }
+  get muzzle() { return this.gun.getObjectByName('muzzle'); }
+  showGun() { for (const k in this.guns) this.guns[k].visible = this.armed && k === this.weapon; }
+
+  spawn(x, z, weapon = 'pistol', speedMul = 1) {
+    this.weapon = ARMS[weapon] ? weapon : 'pistol'; this.speedMul = speedMul;
+    this.pos.set(x, 0, z); this.ry = 0; this.phase = Math.random() * 6; this.state = 'walk'; this.armed = true; this.showGun();
+    this.seen = false; this.shotT = ARMS[this.weapon].first; this.stunT = 0; this.punchT = 0; this.walkW = 0; this.lean = 0; this.root.visible = true;
     this.apply();
   }
 
@@ -136,7 +150,7 @@ class Enemy {
     const want = Math.atan2(dx, dz);
     if (this.state === 'stun') {
       this.stunT -= dt; this.lean = Math.min(1, this.lean + dt * 4); this.walkW = Math.max(0, this.walkW - dt * 4);
-      if (this.stunT <= 0) { this.state = 'walk'; this.shotT = 1.2; }
+      if (this.stunT <= 0) { this.state = 'walk'; this.shotT = ARMS[this.weapon].first; }
       this.apply(); return;
     }
     this.lean = Math.max(0, this.lean - dt * 3);
@@ -146,11 +160,12 @@ class Enemy {
     if (this.armed) {
       move = !see || dist > 15 || (dist > 8 && !this.seen);
       if (see && dist <= 15) {
-        if (!this.seen) { this.seen = true; this.shotT = 1.2; } // first shot 1.2 s after acquiring the player
+        const A = ARMS[this.weapon];
+        if (!this.seen) { this.seen = true; this.shotT = A.first; } // first shot comes a beat after acquiring the player
         if (dist <= 15 && dist >= 8) move = false;
         if (dist < 8) move = false;
         this.shotT -= dt;
-        if (this.shotT <= 0 && Math.abs(d) < 0.25) { this.fire(ctx); this.shotT = 1.8 + Math.random() * 1.2; }
+        if (this.shotT <= 0 && Math.abs(d) < 0.25) { this.fire(ctx); this.shotT = A.gap[0] + Math.random() * (A.gap[1] - A.gap[0]); }
       } else if (!see) this.seen = false;
     } else { // disarmed: close in and punch
       move = dist > 0.9;
@@ -163,7 +178,7 @@ class Enemy {
         const a = dir + off; _c.set(this.pos.x + Math.sin(a) * 1.1, 0, this.pos.z + Math.cos(a) * 1.1);
         if (!ctx.level.insideAny(_c.x, _c.z, RADIUS)) { dir = a; break; }
       }
-      const sp = SPEED * (this.armed ? 1 : 1.35);
+      const sp = SPEED * (this.armed ? 1 : 1.35) * (this.speedMul || 1);
       this.pos.x += Math.sin(dir) * sp * dt; this.pos.z += Math.cos(dir) * sp * dt;
       ctx.level.collideCircle(this.pos, RADIUS);
       this.walkW = Math.min(1, this.walkW + dt * 4); this.phase += dt * sp * 4.2;
@@ -175,24 +190,24 @@ class Enemy {
     this.root.updateWorldMatrix(true, true);
     const from = (this.muzzle || this.gun).getWorldPosition(V());
     const to = V().set(ctx.player.pos.x, ctx.player.eyeY - 0.25, ctx.player.pos.z);
-    const dir = to.sub(from).normalize();
-    // 1.5° cone of spread
+    const dir = to.sub(from).normalize(), A = ARMS[this.weapon];
+    // a small cone of spread
     const perp = V().crossVectors(dir, Math.abs(dir.y) < 0.9 ? V().set(0, 1, 0) : V().set(1, 0, 0)).normalize();
     perp.applyAxisAngle(dir, Math.random() * Math.PI * 2);
-    dir.applyAxisAngle(perp, Math.random() * SPREAD);
-    ctx.weapons.fire('enemy', from, dir, BULLET_SPEED);
-    Audio.play('enemyShot');
+    dir.applyAxisAngle(perp, Math.random() * A.spread);
+    ctx.weapons.fire('enemy', from, dir, A.speed);
+    Audio.play(A.sound);
   }
 
   handWorld() { this.root.updateWorldMatrix(true, true); return this.gun.getWorldPosition(V()); }
 
   dropGun(ctx) {
     if (!this.armed) return;
-    const p = this.handWorld(); this.armed = false; this.gun.visible = false;
-    ctx.weapons.dropPickup(p, 6);
+    const p = this.handWorld(); this.armed = false; this.showGun();
+    ctx.weapons.dropPickup(this.weapon, p, KINDS[this.weapon].ammo);
   }
 
-  stun(ctx) { if (!this.alive) return; this.dropGun(ctx); this.state = 'stun'; this.stunT = 1; Audio.play('thud'); }
+  stun(ctx, secs = 1) { if (!this.alive) return; this.dropGun(ctx); this.state = 'stun'; this.stunT = Math.max(this.stunT || 0, secs); Audio.play('thud'); }
 
   kill(ctx, dir) {
     if (!this.alive) return;
@@ -242,18 +257,26 @@ export class Enemies {
 
   nextWave() {
     this.wave++;
-    const w = this.L.waves[this.wave]; if (!w) return false;
-    this.t = 0; this.queue = w.map(x => ({ s: x.s, d: x.d || 0 })).sort((a, b) => a.d - b.d);
+    let w = this.L.waves[this.wave];
+    if (this.L.gauntlet) { // endless: each wave is bigger, quicker to arrive, faster and better armed
+      const n = this.wave, count = Math.min(14, 2 + n), gap = Math.max(0.5, 1.8 - n * 0.1), sp = this.L.spawns;
+      w = Array.from({ length: count }, (_, i) => ({ s: Math.floor(Math.random() * sp.length), d: i * gap, w: Math.random() < Math.min(0.45, 0.06 * n) ? 'rifle' : 'pistol' }));
+      this.speedMul = Math.min(1.6, 1 + n * 0.05);
+      this.onWave && this.onWave(n);
+    }
+    if (!w) return false;
+    this.t = 0; this.queue = w.map(x => ({ s: x.s, d: x.d || 0, w: x.w || 'pistol' })).sort((a, b) => a.d - b.d);
     return true;
   }
 
-  get done() { return this.wave >= this.L.waves.length; }
+  get done() { return !this.L.gauntlet && this.wave >= this.L.waves.length; }
 
   update(dt, ctx) {
     this.t += dt;
     while (this.queue.length && this.queue[0].d <= this.t) {
-      const q = this.queue.shift(), sp = this.L.spawns[q.s], e = this.list[this.used++ % this.list.length];
-      e.spawn(sp[0], sp[1]); e.ry = Math.atan2(ctx.player.pos.x - sp[0], ctx.player.pos.z - sp[1]); e.apply();
+      const e = this.list.find(x => !x.alive); if (!e) break; // all bodies busy: the rest wait their turn
+      const q = this.queue.shift(), sp = this.L.spawns[q.s];
+      e.spawn(sp[0], sp[1], q.w, this.L.gauntlet ? this.speedMul : 1); e.ry = Math.atan2(ctx.player.pos.x - sp[0], ctx.player.pos.z - sp[1]); e.apply();
       ctx.fx.burst(e.pos, { count: 10, color: 0xe8262b, speed: [0.3, 1], size: [0.03, 0.07], height: [0, 1.8], radius: 0.35, life: 0.8, up: 0.2 });
     }
     for (const e of this.list) e.update(dt, ctx);
@@ -275,9 +298,9 @@ export class Enemies {
     return best;
   }
 
-  snapshot() { return this.list.map(e => [e.pos.x, e.pos.z, e.ry, e.phase, e.walkW, e.lean, e.alive ? 1 : 0, e.armed ? 1 : 0]); }
+  snapshot() { return this.list.map(e => [e.pos.x, e.pos.z, e.ry, e.phase, e.walkW, e.lean, e.alive ? 1 : 0, e.armed ? (e.weapon === 'rifle' ? 2 : 1) : 0]); }
 
   restore(snap) {
-    snap.forEach((s, i) => { const e = this.list[i]; e.pos.set(s[0], 0, s[1]); e.ry = s[2]; e.phase = s[3]; e.walkW = s[4]; e.lean = s[5]; e.root.visible = !!s[6]; e.gun.visible = !!s[7]; if (s[6]) e.apply(); });
+    snap.forEach((s, i) => { const e = this.list[i]; e.pos.set(s[0], 0, s[1]); e.ry = s[2]; e.phase = s[3]; e.walkW = s[4]; e.lean = s[5]; e.root.visible = !!s[6]; e.armed = !!s[7]; e.weapon = s[7] === 2 ? 'rifle' : 'pistol'; e.showGun(); if (s[6]) e.apply(); });
   }
 }
