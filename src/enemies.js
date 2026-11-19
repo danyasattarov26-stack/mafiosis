@@ -7,9 +7,11 @@ export const ENEMY_MAT = new THREE.MeshStandardMaterial({ color: 0xe8262b, rough
 const HEIGHT = 1.8, RADIUS = 0.32, SPEED = 1.6;
 // enemy weapons: bullet speed (game m/s), spread, first shot after seeing you, then the gap between shots
 const ARMS = {
-  pistol: { speed: 18, spread: THREE.MathUtils.degToRad(1.5), first: 1.2, gap: [1.8, 3.0], sound: 'enemyShot' },
-  rifle: { speed: 26, spread: THREE.MathUtils.degToRad(0.8), first: 1.6, gap: [3.0, 4.0], sound: 'rifle' },
+  pistol: { speed: 18, spread: THREE.MathUtils.degToRad(1.5), first: 1.2, gap: [1.8, 3.0], sound: 'enemyShot', warn: 0.6 },
+  rifle: { speed: 26, spread: THREE.MathUtils.degToRad(0.8), first: 1.6, gap: [3.0, 4.0], sound: 'rifle', warn: 0.9 },
 };
+// warn: game seconds before a shot that the aim locks and the red line shows where it will go
+const _X = new THREE.Vector3(1, 0, 0), _Y = new THREE.Vector3(0, 1, 0), _m3 = new THREE.Matrix4(), _q3 = new THREE.Quaternion(), _s3 = new THREE.Vector3();
 const V = () => new THREE.Vector3();
 const _a = V(), _b = V(), _c = V(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const BONES = { thighL: /^thigh_l$|left.?up.?leg/i, thighR: /^thigh_r$|right.?up.?leg/i, calfL: /^calf_l$|left.?leg$/i, calfR: /^calf_r$|right.?leg$/i,
@@ -87,7 +89,7 @@ export function makeEnemyTemplate(scene3d, prefabs, log) {
   }
   // per-bone axes for the procedural walk: the root's x axis (pitch) and z axis (roll) in each bone's own frame
   const axes = {};
-  for (const k of ['thighL', 'thighR', 'calfL', 'calfR', 'spine', 'head', 'upperR']) {
+  for (const k of ['thighL', 'thighR', 'calfL', 'calfR', 'spine', 'head', 'upperR', 'upperL']) {
     const b = bones[k]; if (!b) continue;
     const inv = b.getWorldQuaternion(new THREE.Quaternion()).invert();
     axes[k] = { x: V().set(1, 0, 0).applyQuaternion(inv), z: V().set(0, 0, 1).applyQuaternion(inv) };
@@ -113,7 +115,7 @@ class Enemy {
   spawn(x, z, weapon = 'pistol', speedMul = 1) {
     this.weapon = ARMS[weapon] ? weapon : 'pistol'; this.speedMul = speedMul;
     this.pos.set(x, 0, z); this.ry = 0; this.phase = Math.random() * 6; this.state = 'walk'; this.armed = true; this.showGun();
-    this.seen = false; this.shotT = ARMS[this.weapon].first; this.stunT = 0; this.punchT = 0; this.walkW = 0; this.lean = 0; this.root.visible = true;
+    this.seen = false; this.shotT = ARMS[this.weapon].first; this.aim = null; this.tumble = 0; this.pos.y = 0; this.stunT = 0; this.punchT = 0; this.walkW = 0; this.lean = 0; this.root.visible = true;
     this.apply();
   }
 
@@ -126,18 +128,23 @@ class Enemy {
   }
 
   apply() {
-    this.root.position.copy(this.pos);
-    this.root.rotation.set(0, this.ry, 0);
+    // facing, plus a backwards tumble about the hips when knocked flying
+    const tb = this.tumble || 0;
+    _q2.setFromAxisAngle(_Y, this.ry); if (tb) _q2.multiply(_q3.setFromAxisAngle(_X, -tb));
+    this.root.quaternion.copy(_q2); this.root.position.copy(this.pos);
+    if (tb) { _c.set(0, 0.9, 0).applyQuaternion(_q2); this.root.position.x -= _c.x; this.root.position.y += 0.9 - _c.y; this.root.position.z -= _c.z; }
     const w = this.walkW, s = Math.sin(this.phase), bob = Math.abs(Math.cos(this.phase));
     if (this.bones.thighL) {
       this.bend('thighL', 'x', -s * 0.45 * w, false); this.bend('thighR', 'x', s * 0.45 * w, false);
       this.bend('calfL', 'x', Math.max(0, s) * 0.7 * w, false); this.bend('calfR', 'x', Math.max(0, -s) * 0.7 * w, false);
       this.bend('spine', 'z', Math.sin(this.phase * 0.5) * 0.04 + this.lean * 0.1, false); this.bend('spine', 'x', -this.lean * 0.5);
-      this.bend('head', 'x', 0, false); this.bend('upperR', 'x', 0, false);
-      this.root.position.y = this.pos.y + bob * 0.04 * w;
+      this.bend('head', 'x', tb ? 0.5 : 0, false);
+      if (tb) { this.bend('upperR', 'x', -1.2 + Math.sin(this.flail) * 0.7, false); this.bend('upperL', 'x', -1.2 + Math.cos(this.flail * 1.3) * 0.7, false); }
+      else { this.bend('upperR', 'x', 0, false); this.bend('upperL', 'x', 0, false); }
+      this.root.position.y += bob * 0.04 * w;
     } else {
-      this.root.position.y = this.pos.y + bob * 0.05 * (w + 0.3);
-      this.root.rotation.z = Math.sin(this.phase * 0.5) * 0.03 + this.lean * 0.1;
+      this.root.position.y += bob * 0.05 * (w + 0.3);
+      if (!tb) this.root.rotation.z = Math.sin(this.phase * 0.5) * 0.03 + this.lean * 0.1;
     }
   }
 
@@ -148,6 +155,19 @@ class Enemy {
     if (!this.alive) return;
     const P = ctx.player.pos, dx = P.x - this.pos.x, dz = P.z - this.pos.z, dist = Math.hypot(dx, dz);
     const want = Math.atan2(dx, dz);
+    if (this.state === 'knocked') { // flying back from a punch: dies on hitting a wall or the floor
+      this.airT += dt; this.vel.y -= 9.8 * dt;
+      this.pos.addScaledVector(this.vel, dt);
+      this.tumble = Math.min(1.55, this.tumble + this.tumbleV * dt); this.flail += dt * 14;
+      _c.copy(this.pos); ctx.level.collideCircle(this.pos, RADIUS, this.pos.y + 0.1, this.pos.y + 1.6);
+      const wall = Math.hypot(this.pos.x - _c.x, this.pos.z - _c.z) > 1e-4;
+      for (const o of ctx.enemies.list) // anyone in the way gets bowled over too
+        if (o !== this && o.alive && o.state !== 'knocked' && Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z) < 0.75) o.knock(ctx, this.vel, 0.7);
+      let landed = false; if (this.pos.y <= 0) { this.pos.y = 0; landed = this.airT > 0.15; }
+      this.apply();
+      if (wall || landed || this.airT > 3) this.kill(ctx, this.vel.clone().normalize());
+      return;
+    }
     if (this.state === 'stun') {
       this.stunT -= dt; this.lean = Math.min(1, this.lean + dt * 4); this.walkW = Math.max(0, this.walkW - dt * 4);
       if (this.stunT <= 0) { this.state = 'walk'; this.shotT = ARMS[this.weapon].first; }
@@ -165,8 +185,10 @@ class Enemy {
         if (dist <= 15 && dist >= 8) move = false;
         if (dist < 8) move = false;
         this.shotT -= dt;
-        if (this.shotT <= 0 && Math.abs(d) < 0.25) { this.fire(ctx); this.shotT = A.gap[0] + Math.random() * (A.gap[1] - A.gap[0]); }
-      } else if (!see) this.seen = false;
+        // lock the aim a moment before the shot: the red line shows it, and stepping out of it dodges
+        if (this.shotT <= A.warn && !this.aim && Math.abs(d) < 0.35) { this.aim = this.aimAt(ctx); if (this.shotT < A.warn * 0.6) this.shotT = A.warn * 0.6; }
+        if (this.shotT <= 0 && this.aim) { this.fire(ctx); this.aim = null; this.shotT = A.gap[0] + Math.random() * (A.gap[1] - A.gap[0]); }
+      } else if (!see) { this.seen = false; this.aim = null; }
     } else { // disarmed: close in and punch
       move = dist > 0.9;
       if (!move) { this.punchT += dt; if (this.punchT > 0.6) { this.punchT = 0; ctx.punchPlayer(this); } } else this.punchT = Math.max(0, this.punchT - dt);
@@ -186,17 +208,31 @@ class Enemy {
     this.apply();
   }
 
-  fire(ctx) {
-    this.root.updateWorldMatrix(true, true);
-    const from = (this.muzzle || this.gun).getWorldPosition(V());
-    const to = V().set(ctx.player.pos.x, ctx.player.eyeY - 0.25, ctx.player.pos.z);
-    const dir = to.sub(from).normalize(), A = ARMS[this.weapon];
-    // a small cone of spread
+  muzzleWorld() { this.root.updateWorldMatrix(true, true); return (this.muzzle || this.gun).getWorldPosition(V()); }
+
+  /** Direction to the player's chest with a small cone of spread. */
+  aimAt(ctx) {
+    const from = this.muzzleWorld(), dir = V().set(ctx.player.pos.x, ctx.player.eyeY - 0.25, ctx.player.pos.z).sub(from).normalize();
     const perp = V().crossVectors(dir, Math.abs(dir.y) < 0.9 ? V().set(0, 1, 0) : V().set(1, 0, 0)).normalize();
     perp.applyAxisAngle(dir, Math.random() * Math.PI * 2);
-    dir.applyAxisAngle(perp, Math.random() * A.spread);
-    ctx.weapons.fire('enemy', from, dir, A.speed);
+    return dir.applyAxisAngle(perp, Math.random() * ARMS[this.weapon].spread);
+  }
+
+  fire(ctx) {
+    const A = ARMS[this.weapon];
+    ctx.weapons.fire('enemy', this.muzzleWorld(), this.aim || this.aimAt(ctx), A.speed);
     Audio.play(A.sound);
+  }
+
+  /** A punch: drop the gun, fly back tumbling, and die on hitting something. */
+  knock(ctx, dir, power = 1) {
+    if (!this.alive || this.state === 'knocked') return;
+    this.dropGun(ctx); this.state = 'knocked'; this.aim = null;
+    const d = V().set(dir.x, 0, dir.z); if (d.lengthSq() < 1e-6) d.set(-Math.sin(this.ry), 0, -Math.cos(this.ry));
+    d.normalize(); this.vel = d.multiplyScalar(7.5 * power); this.vel.y = 2.6 * power;
+    this.ry = Math.atan2(-this.vel.x, -this.vel.z); // facing the punch, so the fall is onto the back
+    this.tumble = 0; this.tumbleV = 5 + 3 * power; this.airT = 0; this.flail = Math.random() * 6;
+    Audio.play('punch');
   }
 
   handWorld() { this.root.updateWorldMatrix(true, true); return this.gun.getWorldPosition(V()); }
@@ -221,7 +257,7 @@ class Enemy {
   /** Swept test of segment a→b against this enemy's capsule. Returns the hit parameter t or -1. */
   hitTest(a, b, r = RADIUS) {
     if (!this.alive) return -1;
-    return segCapsule(a, b, this.pos.x, 0.12, this.pos.z, 1.72, r);
+    return segCapsule(a, b, this.pos.x, 0.12 + this.pos.y, this.pos.z, 1.72 + this.pos.y, r);
   }
 }
 
@@ -247,12 +283,28 @@ export class Enemies {
   constructor(scene, template, count = 8) {
     this.list = Array.from({ length: count }, (_, i) => new Enemy(template, scene, i));
     this.queue = []; this.wave = 0;
+    const g = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true); g.translate(0, 0.5, 0);
+    this.beams = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xff1e2d, transparent: true, opacity: 0.55, depthWrite: false, fog: false }), count);
+    this.beams.count = 0; this.beams.frustumCulled = false; this.beams.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(this.beams);
+  }
+
+  /** The red warning lines: from each gunman's muzzle along his locked aim, thickening as the shot nears. */
+  drawBeams(ctx) {
+    let n = 0;
+    for (const e of this.list) {
+      if (!e.alive || !e.armed || !e.aim || e.state !== 'walk') continue;
+      const k = Math.max(0, Math.min(1, 1 - e.shotT / ARMS[e.weapon].warn)), from = e.muzzleWorld();
+      const far = from.clone().addScaledVector(e.aim, 60), hit = ctx.level.segHit(from, far), len = 60 * (hit ? hit.t : 1);
+      const r = 0.004 + 0.012 * k;
+      _q3.setFromUnitVectors(_Y, e.aim); this.beams.setMatrixAt(n++, _m3.compose(from, _q3, _s3.set(r, len, r)));
+    }
+    this.beams.count = n; this.beams.instanceMatrix.needsUpdate = true;
   }
 
   start(level) {
     this.L = level; this.wave = -1; this.queue = []; this.t = 0;
-    for (const e of this.list) { e.state = 'off'; e.root.visible = false; }
-    this.used = 0; this.nextWave();
+    for (const e of this.list) { e.state = 'off'; e.root.visible = false; e.aim = null; }
+    this.beams.count = 0; this.used = 0; this.nextWave();
   }
 
   nextWave() {
@@ -280,6 +332,7 @@ export class Enemies {
       ctx.fx.burst(e.pos, { count: 10, color: 0xe8262b, speed: [0.3, 1], size: [0.03, 0.07], height: [0, 1.8], radius: 0.35, life: 0.8, up: 0.2 });
     }
     for (const e of this.list) e.update(dt, ctx);
+    this.drawBeams(ctx);
     // keep them from stacking up
     for (let i = 0; i < this.list.length; i++) for (let j = i + 1; j < this.list.length; j++) {
       const a = this.list[i], b = this.list[j]; if (!a.alive || !b.alive) continue;
@@ -298,9 +351,10 @@ export class Enemies {
     return best;
   }
 
-  snapshot() { return this.list.map(e => [e.pos.x, e.pos.z, e.ry, e.phase, e.walkW, e.lean, e.alive ? 1 : 0, e.armed ? (e.weapon === 'rifle' ? 2 : 1) : 0]); }
+  snapshot() { return this.list.map(e => [e.pos.x, e.pos.z, e.ry, e.phase, e.walkW, e.lean, e.alive ? 1 : 0, e.armed ? (e.weapon === 'rifle' ? 2 : 1) : 0, e.pos.y, e.tumble || 0, e.flail || 0]); }
 
   restore(snap) {
-    snap.forEach((s, i) => { const e = this.list[i]; e.pos.set(s[0], 0, s[1]); e.ry = s[2]; e.phase = s[3]; e.walkW = s[4]; e.lean = s[5]; e.root.visible = !!s[6]; e.armed = !!s[7]; e.weapon = s[7] === 2 ? 'rifle' : 'pistol'; e.showGun(); if (s[6]) e.apply(); });
+    this.beams.count = 0;
+    snap.forEach((s, i) => { const e = this.list[i]; e.pos.set(s[0], s[8] || 0, s[1]); e.tumble = s[9] || 0; e.flail = s[10] || 0; e.ry = s[2]; e.phase = s[3]; e.walkW = s[4]; e.lean = s[5]; e.root.visible = !!s[6]; e.armed = !!s[7]; e.weapon = s[7] === 2 ? 'rifle' : 'pistol'; e.showGun(); if (s[6]) e.apply(); });
   }
 }

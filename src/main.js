@@ -86,7 +86,7 @@ const ctx = {
     return false;
   },
   punchPlayer() { if (state === 'play') die(); },
-  punch(range, from = null, dirIn = null) {
+  punch(range, from = null, dirIn = null, power = 1) {
     const p = from || V().set(player.pos.x, 1.3, player.pos.z), dir = dirIn || player.forward(V()).setY(0).normalize();
     let best = null, bd = range;
     for (const e of enemies.list) {
@@ -94,7 +94,7 @@ const ctx = {
       const to = V().set(e.pos.x - p.x, 0, e.pos.z - p.z), d = to.length();
       if (d < bd && (from || to.normalize().dot(dir) > 0.45)) { best = e; bd = d; }
     }
-    if (best) best.kill(ctx, dir);
+    if (best) best.knock(ctx, dir, power); // they fly back, and shatter when they hit something
     return !!best;
   },
   /** Katana swing in first person: everyone in front within reach. */
@@ -327,10 +327,22 @@ function xrButton(alt = false) { // outside of play: restart, skip, play again; 
   else if (state === 'paused') { state = 'play'; HUD.show('pause', false); }
 }
 
-function xrArm() { hands[0].setItem(null); hands[1].setItem('pistol', KINDS.pistol.ammo); } // every room starts with a pistol in the right hand
+// Every room starts with empty hands and a pistol floating in front of each one: hold grip near it to take it,
+// keep holding to keep it, and let go to drop it (or throw it, if the hand is moving).
+function xrArm() {
+  hands[0].setItem(null); hands[1].setItem(null);
+  const head = camera.getWorldPosition(V()), fw = camera.getWorldDirection(V()).setY(0);
+  if (fw.lengthSq() < 1e-6) fw.set(0, 0, -1); fw.normalize();
+  const rt = V().set(-fw.z, 0, fw.x);
+  for (const s of [-1, 1]) {
+    const p = head.clone().addScaledVector(fw, 0.4).addScaledVector(rt, 0.22 * s); p.y = Math.max(0.7, head.y - 0.5);
+    weapons.dropPickup('pistol', p, KINDS.pistol.ammo, p.y);
+  }
+}
 
 renderer.xr.setFoveation(1);
 renderer.xr.addEventListener('sessionstart', () => {
+  const wasPlaying = state === 'play';
   xr = true; Audio.init(); weapons.vm.visible = false; HUD.hideScreens();
   const s = renderer.xr.getSession();
   s.addEventListener('visibilitychange', () => { // the Quest menu or a guardian break hides the session
@@ -340,7 +352,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   if (state === 'start' || state === 'end') begin('story');
   else if (state === 'over') begin('gauntlet');
   else if (state !== 'play') restart();
-  xrArm();
+  if (wasPlaying) xrArm(); // a fresh room already armed itself
 });
 renderer.xr.addEventListener('sessionend', () => {
   xr = false; weapons.vm.visible = true; XRHud.hide(); player.rig.rotation.set(0, 0, 0); player.apply();
@@ -398,7 +410,7 @@ function updateXR(realDt) {
         for (const e of enemies.list) if (e.hitTest(_g, _t, 0.3) >= 0 || e.hitTest(h.tipLast, _t, 0.3) >= 0) { e.kill(ctx, dir); Audio.play('swish'); }
       }
       h.tipLast.copy(_t); h.hasTip = true;
-    } else if (h.speed > 2.5 && ctx.punch(0.45, p, h.vel.clone().setY(0).normalize())) Audio.play('punch');
+    } else if (h.speed > 2.5 && ctx.punch(0.45, p, h.vel.clone().setY(0).normalize(), Math.min(1.8, Math.max(0.8, h.speed / 3.5)))) Audio.play('punch');
   }
   return { xr: true, headSpeed: xrHead.speed, handSpeed: handMax };
 }

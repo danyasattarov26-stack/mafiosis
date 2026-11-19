@@ -142,6 +142,7 @@ export class Weapons {
     }
     this.fist = new THREE.Mesh(new THREE.DodecahedronGeometry(0.06, 0), new THREE.MeshStandardMaterial({ color: 0x1b1b1b, flatShading: true, roughness: 0.6 }));
     this.fist.scale.set(1, 0.85, 1.25); this.fist.visible = false; this.vm.add(this.fist);
+    this.fistL = this.fist.clone(); this.fistL.visible = false; this.vm.add(this.fistL); this.side = 1; // punches alternate hands
     this.shots = 0; this.reset('pistol');
   }
 
@@ -234,7 +235,7 @@ export class Weapons {
   punch(ctx) {
     if (this.punchT > 0) return;
     Time.kick(0.15);
-    this.punchT = 0.24; this.fist.visible = true;
+    this.punchT = 0.24; this.side = -this.side; (this.side > 0 ? this.fist : this.fistL).visible = true;
     Audio.play(ctx.punch(1.5) ? 'punch' : 'whoosh');
   }
 
@@ -359,9 +360,9 @@ export class Weapons {
       }
     }
     if (this.punchT > 0) {
-      this.punchT -= realDt; const k = Math.sin(Math.max(0, this.punchT) / 0.24 * Math.PI);
-      this.fist.position.set(0.12 - k * 0.08, -0.17 + k * 0.04, -0.3 - k * 0.32);
-      if (this.punchT <= 0) this.fist.visible = false;
+      this.punchT -= realDt; const k = Math.sin(Math.max(0, this.punchT) / 0.24 * Math.PI), f = this.side > 0 ? this.fist : this.fistL;
+      f.position.set(this.side * (0.12 - k * 0.08), -0.17 + k * 0.04, -0.3 - k * 0.32);
+      if (this.punchT <= 0) { this.fist.visible = false; this.fistL.visible = false; }
     }
   }
 
