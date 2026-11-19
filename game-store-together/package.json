@@ -1,0 +1,26 @@
+{
+  "name": "game-store-together",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/migrate.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.2",
+    "pg": "8.23.1",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.0",
+    "@types/pg": "8.15.4",
+    "@types/three": "0.187.0",
+    "typescript": "5.8.3",
+    "vite": "7.1.12"
+  },
+  "engines": { "node": ">=20" }
+}
