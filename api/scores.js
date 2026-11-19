@@ -9,7 +9,7 @@
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 
 export const BOARDS = {
-  room1: 'asc', room2: 'asc', room3: 'asc', room4: 'asc', room5: 'asc', gauntlet: 'desc',
+  room1: 'asc', room2: 'asc', room3: 'asc', room4: 'asc', room5: 'asc', room6: 'asc', room7: 'asc', room8: 'asc', gauntlet: 'desc',
 };
 const KEEP = 100, SHOW = 10;
 
