@@ -17,8 +17,9 @@ class Input {
   canvas!: HTMLElement;
   wheel = 0;
   private lockedAt = 0;
-  private joy = { id: -1, x0: 0, y0: 0, x: 0, y: 0 };
-  private lookTouch = { id: -1, x: 0, y: 0 };
+  // finger ids: null = no finger. (iOS Safari hands out huge ids that can be negative, so -1 can't mean "none".)
+  private joy = { id: null as number | null, x0: 0, y0: 0, x: 0, y: 0 };
+  private lookTouch = { id: null as number | null, x: 0, y: 0 };
   private touchRoot: HTMLElement | null = null;
   onLockChange: (locked: boolean) => void = () => {};
 
@@ -87,11 +88,11 @@ class Input {
       if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) y -= 1;
       if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
       if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
-      if (this.joy.id >= 0) { x = this.joy.x; y = -this.joy.y; }
+      if (this.joy.id !== null) { x = this.joy.x; y = -this.joy.y; }
     }
     const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
     this.move.x = x; this.move.y = y;
-    this.run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || (this.joy.id >= 0 && Math.hypot(this.joy.x, this.joy.y) > 0.92);
+    this.run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || (this.joy.id !== null && Math.hypot(this.joy.x, this.joy.y) > 0.92);
   }
   pressed(b: Btn) { return this.enabled && this.down.has(b); }
   isHeld(b: Btn) { return this.enabled && this.held.has(b); }
@@ -137,10 +138,10 @@ class Input {
       if (!onGame(e)) return;
       e.preventDefault();
       for (const t of Array.from(e.changedTouches)) {
-        if (t.clientX < innerWidth * 0.45 && this.joy.id < 0) {
+        if (t.clientX < innerWidth * 0.45 && this.joy.id === null) {
           this.joy.id = t.identifier; this.joy.x0 = t.clientX; this.joy.y0 = t.clientY; this.joy.x = 0; this.joy.y = 0;
           joy.style.left = t.clientX - 60 + 'px'; joy.style.top = t.clientY - 60 + 'px'; joy.style.bottom = 'auto'; joy.classList.add('on');
-        } else if (this.lookTouch.id < 0) { this.lookTouch.id = t.identifier; this.lookTouch.x = t.clientX; this.lookTouch.y = t.clientY; }
+        } else if (this.lookTouch.id === null) { this.lookTouch.id = t.identifier; this.lookTouch.x = t.clientX; this.lookTouch.y = t.clientY; }
       }
     };
     const moveT = (e: TouchEvent) => {
@@ -158,14 +159,14 @@ class Input {
       }
       if (mine && e.cancelable) e.preventDefault();
     };
-    const resetJoy = () => { this.joy.id = -1; this.joy.x = this.joy.y = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.style.top = ''; joy.style.left = ''; joy.style.bottom = ''; };
+    const resetJoy = () => { this.joy.id = null; this.joy.x = this.joy.y = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.style.top = ''; joy.style.left = ''; joy.style.bottom = ''; };
     const end = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier === this.joy.id) resetJoy();
-        if (t.identifier === this.lookTouch.id) this.lookTouch.id = -1;
+        if (t.identifier === this.lookTouch.id) this.lookTouch.id = null;
       }
       // if the browser lost track of a finger, drop it
-      if (e.touches.length === 0) { if (this.joy.id >= 0) resetJoy(); this.lookTouch.id = -1; }
+      if (e.touches.length === 0) { if (this.joy.id !== null) resetJoy(); this.lookTouch.id = null; }
     };
     area.addEventListener('touchstart', start, { passive: false });
     addEventListener('touchmove', moveT, { passive: false });
