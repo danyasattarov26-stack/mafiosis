@@ -292,13 +292,15 @@ if (!window.claude) window.claude = {
     const { joinRoom } = await import('https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm');
     const name = new URLSearchParams(location.search).get('room') || 'city';
     const room = joinRoom({ appId: 'moped-garage-v1' }, name);
-    const [sendP, getP] = room.makeAction('p');
+    // Trystero 0.27: actions are objects and peer events carry a context ({ peerId })
+    const act = room.makeAction('p');
+    const sendP = (data, target) => act.send(data, target ? { target } : undefined).catch(() => {});
     const peers = new Map(); let mine = null, listener = null;
     const view = id => ({ peer: id, kind: 'viewer', sameTab: false, isMe: false, presence: peers.get(id) || {} });
     const emit = (joined = [], left = [], updated = []) => listener && listener({ joined, left, updated, peers: [...peers.keys()].map(view) });
-    room.onPeerJoin(id => { if (!peers.has(id)) peers.set(id, {}); if (mine) sendP(mine, id); emit([view(id)]); });
-    room.onPeerLeave(id => { if (!peers.has(id)) return; const v = view(id); peers.delete(id); emit([], [v]); });
-    getP((data, id) => {
+    room.onPeerJoin(({ peerId: id }) => { if (!peers.has(id)) peers.set(id, {}); if (mine) sendP(mine, id); emit([view(id)]); });
+    room.onPeerLeave(({ peerId: id }) => { if (!peers.has(id)) return; const v = view(id); peers.delete(id); emit([], [v]); });
+    act.onMessage((data, { peerId: id }) => {
       if (!data || typeof data !== 'object' || Array.isArray(data)) return;
       const fresh = !peers.has(id); peers.set(id, data);
       if (fresh) emit([view(id)]); else emit([], [], [view(id)]);
