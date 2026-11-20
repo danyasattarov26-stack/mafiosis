@@ -38,8 +38,7 @@ export class Hud {
         this.openEl, this.visitEl),
       el('div', { class: 'hud-right' }, this.ratingEl, this.peersEl),
       this.cross, this.holdEl, this.promptEl, this.toastsEl, this.hintEl, this.carryEl, this.fpsEl);
-    // toasts can carry buttons (invites), so they need pointer events
-    this.toastsEl.style.pointerEvents = 'auto';
+    // the HUD never blocks touches to the game; only buttons inside toasts (invites) are clickable
     parent.appendChild(this.root);
   }
 
@@ -88,7 +87,7 @@ export class Hud {
 
   toast(msg: string, kind: 'good' | 'bad' | 'info' = 'info', ms = 3200, buttons?: { label: string; fn: () => void }[]) {
     const t = el('div', { class: 'toast ' + kind }, msg);
-    if (buttons) for (const b of buttons) t.append(' ', el('button', { class: 'btn small sun', onclick: () => { b.fn(); t.remove(); } }, b.label));
+    if (buttons) for (const b of buttons) t.append(' ', el('button', { class: 'btn small sun', style: { pointerEvents: 'auto' }, onclick: () => { b.fn(); t.remove(); } }, b.label));
     this.toastsEl.prepend(t);
     while (this.toastsEl.children.length > 4) this.toastsEl.lastElementChild!.remove();
     setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, ms);

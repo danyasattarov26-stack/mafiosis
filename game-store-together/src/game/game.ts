@@ -137,7 +137,8 @@ export class Game {
     const w = this.world;
     if (this.sim && !this.readOnly) this.sim.tick(dt);
     const frozen = this.mode === 'ui' || this.mode === 'register';
-    this.player.frozen = frozen || !input.locked;
+    // phones never lock a mouse pointer: only desktop waits for pointer lock
+    this.player.frozen = frozen || (!input.locked && !input.touch);
     if (this.mode !== 'register') this.player.update(dt, this.view.colliders);
     this.gfx.setTime(w.save.time);
     this.gfx.follow(this.player.pos);
