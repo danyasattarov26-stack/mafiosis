@@ -33,7 +33,7 @@ async function boot() {
   // a preview world for the menu background
   let local = loadLocal();
   const game = new Game(gfx, local || newSave('Game Store Together'), $('ui'));
-  if (debugMode) Object.assign(window as any, { __game: game, __input: input, __coop: coop, __api: api });
+  if (debugMode) Object.assign(window as any, { __game: game, __input: input, __coop: coop, __api: api, __p2p: { inbox } });
   if (api.profile) coop.setMe(api.profile.username, api.profile.appearance);
 
   // ---------- UI wiring ----------
