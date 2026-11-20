@@ -158,5 +158,6 @@ export const ALL_MODELS = {
   people: ['cafe-customer', 'backpacker', 'graduate-student', 'seated-office-worker', 'teen-player', 'student-in-a-hoodie', 'bmx-rider', 'beginner-kid-skater', 'neighborhood-child', 'school-student',
     'arriving-hotel-guest', 'slot-tourist', 'street-skater', 'kid-in-a-black'],
   extra: ['cabinetTelevision', 'televisionModern', 'loungeSofa', 'arcade-machine', 'pinball', 'claw-machine', 'dance-machine', 'vending-machine', 'prizes', 'rug_rectangle_stripes_A', 'rug_oval_A',
-    'television_01', 'kitchenMicrowave', 'kitchenCoffeeMachine', 'pizza', 'pizza-box', 'cup-coffee', 'bowl-broth'],
+    'television_01', 'kitchenMicrowave', 'kitchenCoffeeMachine', 'pizza', 'pizza-box', 'cup-coffee', 'bowl-broth',
+    'bookcaseOpen', 'books', 'computerScreen', 'computerKeyboard', 'computerMouse', 'lampRoundFloor', 'loungeChair', 'pottedPlant', 'radio', 'rugRound', 'sideTable', 'trashcan', 'coatRackStanding'],
 };

@@ -53,7 +53,10 @@ export class Player {
     this.pitch = clamp(this.pitch, -1.45, 1.45);
   }
 
-  update(dt: number, colliders: AABB[]) {
+  /** which floor you're on */
+  get floor() { return Math.max(0, Math.floor((this.pos.y + 0.6) / 3.5)); }
+
+  update(dt: number, colliders: AABB[], ground: (x: number, z: number, y: number) => number = () => 0) {
     if (!this.frozen) this.look(input.lookX, input.lookY);
     const mv = this.frozen ? { x: 0, y: 0 } : input.move;
     const run = input.run;
@@ -67,10 +70,15 @@ export class Player {
     if (!this.frozen && input.pressed('jump') && this.grounded) { this.vy = 4.6; this.grounded = false; }
     this.vy -= 13 * dt;
     this.pos.y += this.vy * dt;
-    if (this.pos.y <= 0) { this.pos.y = 0; this.vy = 0; this.grounded = true; }
     // move per axis and resolve collisions against boxes (circle vs AABB)
     this.pos.x += this.vel.x * dt; this.collide(colliders);
     this.pos.z += this.vel.z * dt; this.collide(colliders);
+    // floors and stairs: land on what's under you; stick to the steps while walking down them
+    const g = ground(this.pos.x, this.pos.z, this.pos.y);
+    const wasGrounded = this.grounded;
+    if (this.pos.y <= g) { this.pos.y = g; this.vy = 0; this.grounded = true; }
+    else if (wasGrounded && this.vy <= 0 && this.pos.y - g < 0.4) { this.pos.y = g; this.vy = 0; this.grounded = true; }
+    else this.grounded = false;
     this.pos.x = clamp(this.pos.x, BOUNDS.x0, BOUNDS.x1); this.pos.z = clamp(this.pos.z, BOUNDS.z0, BOUNDS.z1);
     const hs = Math.hypot(this.vel.x, this.vel.z);
     this.moving = hs > 0.5;
@@ -88,6 +96,7 @@ export class Player {
   private collide(cs: AABB[]) {
     for (const c of cs) {
       if (c.y1 !== undefined && this.pos.y > c.y1 - 0.05) continue;
+      if (c.y0 !== undefined && this.pos.y + 1.7 < c.y0) continue;
       const nx = clamp(this.pos.x, c.x0, c.x1), nz = clamp(this.pos.z, c.z0, c.z1);
       const dx = this.pos.x - nx, dz = this.pos.z - nz, d2 = dx * dx + dz * dz;
       if (d2 >= R * R) continue;
@@ -100,11 +109,11 @@ export class Player {
     }
   }
 
-  /** where the camera ray hits the floor (y = 0), if within reach */
-  floorHit(maxDist = 6): THREE.Vector3 | null {
+  /** where the camera ray hits the floor you're on, if within reach */
+  floorHit(maxDist = 6, planeY = 0): THREE.Vector3 | null {
     const dir = new THREE.Vector3(); this.camera.getWorldDirection(dir);
     if (dir.y > -0.05) return null;
-    const t = -this.camera.position.y / dir.y;
+    const t = (planeY - this.camera.position.y) / dir.y;
     if (t > maxDist) return null;
     return this.camera.position.clone().addScaledVector(dir, t);
   }

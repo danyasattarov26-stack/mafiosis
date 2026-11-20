@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { ITEM } from '../config/items';
 import type { PlacedObject } from '../core/save';
 import { instance, ownMaterials, stripShelf } from '../engine/assets';
-import { rotAngle, POD, RIG } from '../sim/layout';
+import { rotAngle, POD, RIG, WALL_H } from '../sim/layout';
+import { OFFICE, floorY } from '../sim/building';
 import { box, mat, pcTower, keyboardMouse, screenMaterial, neonSign, poster, floorLamp, productProto, type Proto, textCanvas, foamTexture, gridTexture, menuBoard } from './props';
 
 export interface ObjView {
@@ -304,6 +305,87 @@ function foodbarVisual(o: PlacedObject, v: ObjView) {
   tag.userData.ownGeo = true; tag.userData.priceTag = true; tag.position.set(0.7, 0.75, 0.452); g.add(tag);
 }
 
+/** the manager's office: a cozy room with a doorway and a window onto the shop floor */
+function officeRoom(v: ObjView) {
+  const g = v.root, H = WALL_H, hw = OFFICE.w / 2, hd = OFFICE.d / 2, t = OFFICE.wall, [d0, d1] = OFFICE.door;
+  const paper = new THREE.MeshStandardMaterial({ map: wallpaper(), roughness: 0.9 });
+  const wood = mat('#8d5b3a', { rough: 0.7 }), trim = mat('#6d4c3d', { rough: 0.7 });
+  const glassM = glassMat();
+  const blocker = (m: THREE.Object3D) => { m.userData.target = { kind: 'block' }; return m; };
+  // front wall with the doorway (two sides + the lintel), wainscot on the shop side
+  const fw = (x0: number, x1: number) => { g.add(blocker(box(x1 - x0, H, t, paper, (x0 + x1) / 2, H / 2, hd - t / 2))); g.add(box(x1 - x0, 0.9, 0.02, wood, (x0 + x1) / 2, 0.45, hd + 0.01)); };
+  fw(-hw, d0); fw(d1, hw);
+  g.add(blocker(box(d1 - d0, H - 2.2, t, paper, (d0 + d1) / 2, 2.2 + (H - 2.2) / 2, hd - t / 2)));
+  g.add(box(0.07, 2.2, t + 0.04, trim, d0, 1.1, hd - t / 2), box(0.07, 2.2, t + 0.04, trim, d1, 1.1, hd - t / 2), box(d1 - d0 + 0.07, 0.07, t + 0.04, trim, (d0 + d1) / 2, 2.2, hd - t / 2));
+  const leaf = box(d1 - d0 - 0.06, 2.1, 0.05, mat('#a47148', { rough: 0.6 }), 0, 1.05, 0); // door, swung open into the room
+  const hinge = new THREE.Group(); hinge.position.set(d0 + 0.03, 0, hd - t); leaf.position.x = (d1 - d0 - 0.06) / 2; hinge.add(leaf); hinge.rotation.y = -1.45; g.add(hinge);
+  hinge.add(box(0.03, 0.03, 0.08, mat('#ffd166', { metal: 0.6 }), d1 - d0 - 0.16, 1.0, 0.05));
+  // side wall facing the shop, with a big interior window
+  const wz0 = -1.0, wz1 = 0.6;
+  const sw = (z0: number, z1: number, y0: number, y1: number) => g.add(blocker(box(t, y1 - y0, z1 - z0, paper, -hw + t / 2, (y0 + y1) / 2, (z0 + z1) / 2)));
+  sw(-hd, wz0, 0, H); sw(wz1, hd, 0, H); sw(wz0, wz1, 0, 1.0); sw(wz0, wz1, 2.2, H);
+  const win = box(0.03, 1.2, wz1 - wz0, glassM, -hw + t / 2, 1.6, (wz0 + wz1) / 2); win.castShadow = false; g.add(blocker(win));
+  g.add(box(0.14, 0.05, wz1 - wz0 + 0.1, trim, -hw + t / 2, 1.0, (wz0 + wz1) / 2), box(0.14, 0.05, wz1 - wz0 + 0.1, trim, -hw + t / 2, 2.2, (wz0 + wz1) / 2));
+  // inside: wallpaper on the shop's back & right walls, a rug, ceiling light
+  g.add(box(OFFICE.w - t, H, 0.02, paper, t / 2, H / 2, -hd + 0.011), box(0.02, H, OFFICE.d - t, paper, hw - 0.011, H / 2, -t / 2));
+  const rug = instance('rugRound'); rug.position.set(0.25, 0.005, 0.1); g.add(rug);
+  g.add(box(1.0, 0.03, 0.5, mat('#fff8e7', { emissive: '#ffd8a8', ei: 1.1 }), 0.2, H - 0.03, 0));
+  // desk with the manager PC, facing the back wall
+  const desk = new THREE.Group(); desk.position.set(-0.25, 0, -1.07);
+  desk.add(instance('desk'));
+  const scr = instance('computerScreen'); scr.position.set(0, 0.77, -0.18); desk.add(scr);
+  const os = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.36), new THREE.MeshStandardMaterial({ map: textCanvas('ShopOS', { w: 256, h: 150, bg: '#3a0ca3', fg: '#ffd166' }), emissive: '#fff', emissiveIntensity: 0.7 }));
+  (os.material as any).emissiveMap = (os.material as any).map; os.userData.ownGeo = true; os.position.set(0, 0.77 + 0.34, -0.12); desk.add(os);
+  const kb = instance('computerKeyboard'); kb.position.set(-0.05, 0.77, 0.12); desk.add(kb);
+  const ms = instance('computerMouse'); ms.position.set(0.38, 0.77, 0.12); desk.add(ms);
+  const books = instance('books'); books.position.set(-0.56, 0.77, -0.12); books.scale.setScalar(0.8); desk.add(books);
+  const cup = instance('cup-coffee'); cup.position.set(0.55, 0.77, -0.05); desk.add(cup);
+  const ch = chair(1); ch.position.set(0, 0, 0.62); ch.rotation.y = Math.PI; desk.add(ch);
+  desk.userData.target = { kind: 'laptop', id: 'office' };
+  g.add(desk);
+  // bookshelf, lamp and bin on the right wall, plant in the corner
+  const bc = instance('bookcaseOpen'); bc.position.set(hw - 0.27, 0, -0.72); bc.rotation.y = -Math.PI / 2; g.add(bc);
+  for (const [y, z] of [[0.12, -0.92], [0.55, -0.55], [0.98, -0.85], [1.4, -0.6]]) { const b = instance('books'); b.position.set(hw - 0.3, y, z); b.rotation.y = -Math.PI / 2; b.scale.setScalar(0.85); g.add(b); }
+  const lamp = instance('lampRoundFloor'); lamp.position.set(hw - 0.25, 0, -hd + 0.25); g.add(lamp);
+  const bin = instance('trashcan'); bin.position.set(0.6, 0, -1.25); bin.scale.setScalar(0.7); g.add(bin);
+  const plant = instance('pottedPlant'); plant.position.set(-hw + 0.32, 0, -hd + 0.3); g.add(plant);
+  // armchair and a side table with coffee and the radio, by the front wall
+  const arm = instance('loungeChair'); arm.position.set(hw - 0.62, 0, 0.42); arm.rotation.y = -Math.PI / 2 - 0.35; g.add(arm);
+  const tbl = instance('sideTable'); tbl.position.set(0.5, 0, hd - 0.33); tbl.rotation.y = Math.PI; tbl.scale.setScalar(0.85); g.add(tbl);
+  const cm = instance('kitchenCoffeeMachine'); cm.position.set(0.25, 0.655, hd - 0.33); cm.rotation.y = Math.PI; cm.scale.setScalar(0.8); g.add(cm);
+  const radio = instance('radio'); radio.position.set(0.78, 0.655, hd - 0.33); radio.rotation.y = Math.PI; radio.scale.setScalar(0.55); g.add(radio);
+  const coat = instance('coatRackStanding'); coat.position.set(-hw + 0.35, 0, 1.05); g.add(coat);
+  // posters, a clock and the door plaque
+  const p1 = poster('Top Score', '#5b5bd6', 3); p1.position.set(-0.85, 2.0, -hd + 0.03); p1.scale.setScalar(0.75); g.add(p1);
+  const p2 = poster('Level Up', '#ef476f', 7); p2.position.set(0.35, 2.05, -hd + 0.03); p2.scale.setScalar(0.75); g.add(p2);
+  const clock = new THREE.Mesh(new THREE.CircleGeometry(0.2, 24), new THREE.MeshStandardMaterial({ map: clockFace(), roughness: 0.6 }));
+  clock.userData.ownGeo = true; clock.position.set(hw - 0.025, 2.25, 0.3); clock.rotation.y = -Math.PI / 2; g.add(clock);
+  const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.16), new THREE.MeshBasicMaterial({ map: textCanvas('MANAGER', { w: 512, h: 128, bg: '#2b2d42', fg: '#ffd166', border: '#ffd166' }) }));
+  plaque.userData.ownGeo = true; plaque.position.set((d0 + d1) / 2, 2.45, hd + 0.005); g.add(plaque);
+}
+let paperTex: THREE.Texture | null = null;
+function wallpaper() {
+  if (paperTex) return paperTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#f2e3c6'; c.fillRect(0, 0, 128, 128);
+  c.fillStyle = '#e8d3ad'; for (let x = 0; x < 128; x += 16) c.fillRect(x, 0, 6, 128);
+  c.fillStyle = '#d9b98a'; for (let y = 8; y < 128; y += 32) for (let x = 3; x < 128; x += 32) { c.beginPath(); c.arc(x, y, 2, 0, Math.PI * 2); c.fill(); }
+  paperTex = new THREE.CanvasTexture(cv); paperTex.colorSpace = THREE.SRGBColorSpace; paperTex.wrapS = paperTex.wrapT = THREE.RepeatWrapping; paperTex.repeat.set(2, 2);
+  return paperTex;
+}
+function clockFace() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#fff8e7'; c.beginPath(); c.arc(64, 64, 62, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#2b2d42'; c.lineWidth = 6; c.stroke();
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; c.fillStyle = '#2b2d42'; c.fillRect(64 + Math.sin(a) * 50 - 2, 64 - Math.cos(a) * 50 - 2, 4, 4); }
+  c.lineCap = 'round'; c.lineWidth = 6; c.beginPath(); c.moveTo(64, 64); c.lineTo(64 + 28, 64 - 14); c.stroke();
+  c.lineWidth = 4; c.beginPath(); c.moveTo(64, 64); c.lineTo(64 - 6, 64 - 44); c.stroke();
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function fridgeModel() {
   // built in code so the glass doors are really see-through
   const g = new THREE.Group();
@@ -403,20 +485,10 @@ export function buildObject(o: PlacedObject): ObjView {
   const root = new THREE.Group();
   const v: ObjView = { root, key: objKey(o), screens: [] };
   const def = ITEM[o.item];
-  root.position.set(o.x, o.wall ? (o.y ?? 1.8) : 0, o.z);
+  root.position.set(o.x, o.wall ? (o.y ?? 1.8) : floorY(o.fl || 0), o.z);
   root.rotation.y = rotAngle(o.rot);
-  root.userData.target = { kind: o.item === 'office' ? 'laptop' : 'obj', id: o.id };
-  if (o.item === 'office') {
-    const dk = instance('desk'); dk.position.set(0, 0, -0.05); root.add(dk);
-    const lap = instance('laptop'); lap.position.set(0, 0.77, 0.0); lap.scale.setScalar(1.25); root.add(lap);
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.2), new THREE.MeshStandardMaterial({ map: textCanvas('ShopOS', { w: 256, h: 150, bg: '#3a0ca3', fg: '#fff' }), emissive: '#fff', emissiveIntensity: 0.6 }));
-    (scr.material as any).emissiveMap = (scr.material as any).map;
-    scr.userData.ownGeo = true; scr.position.set(0, 0.92, -0.135); scr.rotation.x = -0.25; root.add(scr);
-    const ch = chair(0); ch.position.set(0, 0, -0.75); root.add(ch);
-    const label = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.22), new THREE.MeshBasicMaterial({ map: textCanvas('MANAGER', { w: 512, h: 120, bg: '#2b2d42', fg: '#ffd166' }) }));
-    label.userData.ownGeo = true; label.position.set(0, 0.6, 0.4); root.add(label);
-    return v;
-  }
+  root.userData.target = { kind: 'obj', id: o.id };
+  if (o.item === 'office') { root.userData.target = null; officeRoom(v); return v; }
   if (!def) return v;
   switch (def.build) {
     case 'station': case 'console': case 'retro': case 'pod': case 'racing': case 'vr': stationVisual(o, v); break;

@@ -2,20 +2,27 @@
 import { ITEM } from '../config/items';
 import type { SaveData } from '../core/save';
 import { CELL, footprint, shopSize, DOOR, type V2 } from './layout';
+import { stairs, elevator, LANE } from './building';
 
 export class Nav {
   w = 0; d = 0; cols = 0; rows = 0;
   blocked = new Uint8Array(0);
   ver = -1;
 
-  rebuild(s: SaveData) {
+  /** one grid per floor: objects on that floor, plus the stair flights and the elevator shaft */
+  rebuild(s: SaveData, fl = 0) {
     const { w, d } = shopSize(s);
     this.w = w; this.d = d;
     this.cols = Math.round(w / CELL); this.rows = Math.round(d / CELL);
     this.blocked = new Uint8Array(this.cols * this.rows);
+    const rects: { x0: number; x1: number; z0: number; z1: number }[] = [];
     for (const o of s.objects) {
-      if (o.wall || ITEM[o.item]?.walkable) continue;
-      const f = footprint(o.item, o.x, o.z, o.rot);
+      if (o.wall || ITEM[o.item]?.walkable || (o.fl || 0) !== fl) continue;
+      rects.push(footprint(o.item, o.x, o.z, o.rot));
+    }
+    const st = stairs(s); if (st) rects.push({ x0: st.x0, x1: st.x0 + 2 * LANE, z0: st.zBack, z1: st.zFront });
+    const el = elevator(s); if (el) rects.push(el.shaft);
+    for (const f of rects) {
       const c0 = Math.max(0, Math.floor((f.x0 + w / 2) / CELL + 0.01)), c1 = Math.min(this.cols - 1, Math.ceil((f.x1 + w / 2) / CELL - 0.01) - 1);
       const r0 = Math.max(0, Math.floor((f.z0 + d) / CELL + 0.01)), r1 = Math.min(this.rows - 1, Math.ceil((f.z1 + d) / CELL - 0.01) - 1);
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) this.blocked[r * this.cols + c] = 1;

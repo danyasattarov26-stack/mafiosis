@@ -4,6 +4,7 @@ import { ITEM } from '../config/items';
 import type { PlacedObject } from '../core/save';
 import { buildObject } from '../world/objects';
 import { placeBlocked, snapCenter, rotAngle, footprint } from '../sim/layout';
+import { floorY } from '../sim/building';
 import type { World } from '../sim/world';
 import type { Player } from './player';
 import type { ShopShell } from '../world/shop';
@@ -18,7 +19,7 @@ export class Placement {
   rot = 0;
   ghost: THREE.Group | null = null;
   grid: THREE.Mesh | null = null;
-  pos = { x: 0, z: 0, y: 1.8, wall: false };
+  pos = { x: 0, z: 0, y: 1.8, wall: false, fl: 0 };
   valid = false;
   reason = '';
   private ray = new THREE.Raycaster();
@@ -59,21 +60,23 @@ export class Placement {
       // which way the wall faces into the room → quarter turns
       const rot = Math.abs(n.x) > Math.abs(n.z) ? (n.x > 0 ? 1 : 3) : (n.z > 0 ? 0 : 2);
       const p = hit.point;
-      const x = Math.round(p.x * 4) / 4, z = Math.round(p.z * 4) / 4, y = Math.min(2.5, Math.max(1.1, Math.round(p.y * 10) / 10));
-      this.pos = { x: x + n.x * 0.02, z: z + n.z * 0.02, y, wall: true };
+      const base = floorY(player.floor);
+      const x = Math.round(p.x * 4) / 4, z = Math.round(p.z * 4) / 4, y = base + Math.min(2.5, Math.max(1.1, Math.round((p.y - base) * 10) / 10));
+      this.pos = { x: x + n.x * 0.02, z: z + n.z * 0.02, y, wall: true, fl: player.floor };
       this.rot = rot;
       this.ghost.position.set(this.pos.x, y, this.pos.z);
       this.ghost.rotation.y = rotAngle(rot);
       const clash = world.save.objects.some(o => o.wall && o.id !== this.moving && Math.hypot(o.x - this.pos.x, o.z - this.pos.z) < 0.7 && Math.abs((o.y || 1.8) - y) < 0.7);
       this.valid = !clash && n.y < 0.5; this.reason = clash ? 'Too close to another sign' : '';
     } else {
-      const hit = player.floorHit(7) || player.camera.position.clone().add(player.forward().multiplyScalar(3)).setY(0);
+      const fl = player.floor, fy = floorY(fl);
+      const hit = player.floorHit(7, fy) || player.camera.position.clone().add(player.forward().multiplyScalar(3)).setY(fy);
       const sn = snapCenter(this.item, hit.x, hit.z, this.rot);
-      this.pos = { x: sn.x, z: sn.z, y: 0, wall: false };
+      this.pos = { x: sn.x, z: sn.z, y: 0, wall: false, fl };
       this.ghost.visible = true;
-      this.ghost.position.set(sn.x, 0.01, sn.z);
+      this.ghost.position.set(sn.x, fy + 0.01, sn.z);
       this.ghost.rotation.y = rotAngle(this.rot);
-      const why = placeBlocked(world.save, this.item, sn.x, sn.z, this.rot, this.moving || undefined);
+      const why = placeBlocked(world.save, this.item, sn.x, sn.z, this.rot, this.moving || undefined, fl);
       // don't place onto yourself
       const f = footprint(this.item, sn.x, sn.z, this.rot);
       const onMe = player.pos.x > f.x0 - 0.25 && player.pos.x < f.x1 + 0.25 && player.pos.z > f.z0 - 0.25 && player.pos.z < f.z1 + 0.25 && !def.walkable;

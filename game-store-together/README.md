@@ -22,7 +22,7 @@ and grow a tiny laptop corner into the best LAN café in the city.
 1. Look at the **CLOSED** sign by the door and press **E**: the clock starts and customers walk in.
 2. Customers pay **$20** to play for **10 s** on a free station (a progress ring floats over their head).
    With no free station they queue for up to **15 s**, then leave unhappy.
-3. Use the **manager laptop** (back corner) to buy stations, upgrades, decorations, stock, staff, licenses and expansions.
+3. Use the **manager PC** in your office (the room in the back-right corner) to buy stations, upgrades, decorations, stock, staff, licenses, expansions and floors.
    Everything arrives as **boxes** in the delivery zone: carry them, **F** to unbox furniture, **Tab** to place it
    (ghost preview, grid snapping, **R** rotates, green = OK, red = blocked).
 4. From level 2 the **Retail License** opens the store section: counters, shelves, fridges, snacks and merch.
@@ -43,7 +43,14 @@ and grow a tiny laptop corner into the best LAN café in the city.
   hire a **Cook**. Stock it with Food Supplies boxes; the Food Supplies price on the laptop scales the menu prices.
 - **Regulars & VIPs:** eight named regulars with favourite items and wishes. Happy visits earn hearts: at 3 hearts they
   buy a **VIP membership**, at 5 they bring you a gift.
-- **Daily goals & achievements:** three new goals each morning with cash and XP rewards, and 23 achievements.
+- **Daily goals & achievements:** three new goals each morning with cash and XP rewards, and 29 achievements.
+- **Floors:** build up to 4 floors (7 after a rebirth). Stairs in the back-left corner, an elevator upgrade next to them;
+  customers and staff walk (or ride) between floors, and higher floors are less popular until you have the elevator.
+  In the elevator, **E** rides up and **F** rides down.
+- **Rebirth:** once every floor is built, start over with a permanent +25% income and +15% XP per rebirth. You keep your
+  regulars, achievements, styles and shop name.
+- **Manager's office:** a cozy room with your PC, a bookshelf, an armchair, coffee and a window onto the shop floor.
+- **Staff skills:** staff level up (★1–5) as they work, or you can pay to train them: faster on their feet and at the job.
 - **Station upgrades:** monitors, gaming chairs and desks install onto stations and change price, comfort and looks.
 - **Five customer types** (casual, kids, pro gamers, big spenders, troublemakers) unlocked by shop level, each with its
   own wants, budgets and behaviour. Troublemakers litter, spill, kick machines and try to **steal**. Press **E** on a running
@@ -101,7 +108,8 @@ src/ui/              hud.ts, laptop.ts (ShopOS), panels.ts (inventory, register,
   It appears in the laptop shop, inventory, placement and the simulation automatically.
 - **New customer type:** add it to `CUSTOMERS` in `src/config/npcs.ts`. Regulars are `REGULARS` in the same file.
 - **Goals & achievements:** `GOALS` and `ACHIEVEMENTS` in `src/config/goals.ts`.
-- **Balance:** `ECON`, `PERKS`, `LICENSES`, `STAFF`, `EXPANSIONS` and the style lists in `src/config/economy.ts`.
+- **Balance:** `ECON`, `PERKS`, `LICENSES`, `STAFF`, `STAFF_SKILL`, `EXPANSIONS`, `STOREYS`, `ELEVATOR`, `REBIRTH` and the style lists in `src/config/economy.ts`.
+- **Floors, stairs, elevator, office:** the geometry lives in `src/sim/building.ts`.
 - **Save format change:** bump `SAVE_VERSION` in `src/core/save.ts` and add a migration step. Old local and cloud saves
   upgrade on load.
 - **Database change:** append a SQL step to `MIGRATIONS` in `api/_db.js`.

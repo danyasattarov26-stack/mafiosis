@@ -9,7 +9,8 @@ import { City } from '../world/city';
 import { CharView } from '../world/chars';
 import { buildObject, updateShelf, objKey, smoke, animateSmoke, type ObjView } from '../world/objects';
 import { productProto, spill, textCanvas } from '../world/props';
-import { footprint, counterSpots, DOOR } from '../sim/layout';
+import { footprint, counterSpots, DOOR, WALL_H } from '../sim/layout';
+import { floorY, floorOfY, officeWalls } from '../sim/building';
 import { PLAYING, type World, type Customer } from '../sim/world';
 import { REGULAR, hearts } from '../config/npcs';
 import { damp, dampAngle } from '../core/util';
@@ -34,6 +35,7 @@ export class View {
   private time = 0;
   private labelCache = new Map<string, THREE.Texture>();
   private counterKey = '';
+  private cullFloor = -1;
 
   constructor(public gfx: Gfx, public world: World) {
     gfx.scene.add(this.root);
@@ -57,7 +59,7 @@ export class View {
 
   /** everything the crosshair can interact with */
   targets(): THREE.Object3D[] {
-    const t: THREE.Object3D[] = [this.shell.doorSign];
+    const t: THREE.Object3D[] = [this.shell.doorSign, ...this.shell.liftTargets];
     for (const v of this.objs.values()) t.push(v.root);
     for (const b of this.boxes.values()) if (b.o.visible) t.push(b.o);
     for (const o of this.trash.values()) t.push(o);
@@ -68,6 +70,7 @@ export class View {
   }
 
   private reconcile() {
+    this.cullFloor = -1;
     const w = this.world, s = w.save;
     if (this.shell.build(s)) this.shell.group.updateMatrixWorld(true);
     this.shell.setOpen(s.open);
@@ -104,7 +107,8 @@ export class View {
         e = { o, key }; this.boxes.set(b.id, e); this.root.add(o);
       }
       e.o.visible = !b.at && b.carrier !== this.localId;
-      if (!b.carrier) { e.o.position.set(b.x, b.y || 0, b.z); e.o.rotation.y = b.ry; }
+      e.o.userData.fl = b.fl || 0;
+      if (!b.carrier) { e.o.position.set(b.x, floorY(b.fl || 0) + (b.y || 0), b.z); e.o.rotation.y = b.ry; }
     }
     for (const [id, e] of this.boxes) if (!bseen.has(id)) { e.o.removeFromParent(); this.boxes.delete(id); }
     // trash & spills
@@ -114,7 +118,7 @@ export class View {
       if (!this.trash.has(t.id)) {
         const o = t.kind === 'spill' ? spill() : instance('trash_A');
         if (t.kind !== 'spill') o.scale.setScalar(0.6);
-        const g = new THREE.Group(); g.add(o); g.position.set(t.x, 0, t.z); g.rotation.y = t.ry;
+        const g = new THREE.Group(); g.add(o); g.position.set(t.x, floorY(t.fl || 0), t.z); g.rotation.y = t.ry; g.userData.fl = t.fl || 0;
         if (t.kind === 'spill') { const hit = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.7), new THREE.MeshBasicMaterial({ visible: false })); hit.userData.ownGeo = true; g.add(hit); }
         g.userData.target = { kind: 'trash', id: t.id };
         this.trash.set(t.id, g); this.root.add(g);
@@ -125,8 +129,10 @@ export class View {
     this.colliders = [...this.shell.colliders, ...this.city.colliders];
     for (const o of s.objects) {
       if (o.wall || ITEM[o.item]?.walkable) continue;
+      const y0 = floorY(o.fl || 0);
+      if (o.item === 'office') { for (const r of officeWalls(o)) this.colliders.push({ ...r, y0, y1: y0 + WALL_H }); continue; }
       const f = footprint(o.item, o.x, o.z, o.rot);
-      this.colliders.push({ x0: f.x0 + 0.05, x1: f.x1 - 0.05, z0: f.z0 + 0.05, z1: f.z1 - 0.05, y1: 1.0 });
+      this.colliders.push({ x0: f.x0 + 0.05, x1: f.x1 - 0.05, z0: f.z0 + 0.05, z1: f.z1 - 0.05, y0, y1: y0 + 1.0 });
     }
   }
 
@@ -136,9 +142,9 @@ export class View {
     return t;
   }
 
-  popup(x: number, z: number, text: string, color = '#80ed99') {
+  popup(x: number, z: number, text: string, color = '#80ed99', y = 0) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textCanvas(text, { w: 256, h: 96, fg: color, glow: 'rgba(0,0,0,0.6)' }), depthTest: false, transparent: true }));
-    s.scale.set(0.9, 0.34, 1); s.position.set(x, 1.6, z); s.renderOrder = 12;
+    s.scale.set(0.9, 0.34, 1); s.position.set(x, y + 1.6, z); s.renderOrder = 12;
     this.root.add(s); this.popups.push({ s, t: 0 });
   }
 
@@ -146,7 +152,10 @@ export class View {
     const w = this.world, s = w.save;
     this.time += dt;
     if (w.rev !== this.rev) { this.rev = w.rev; this.reconcile(); }
-    const people: { x: number; z: number }[] = [{ x: cam.x, z: cam.z }];
+    const people: { x: number; y: number; z: number }[] = [{ x: cam.x, y: cam.y - 1.6, z: cam.z }];
+    // only draw the floor you're on and its neighbours (outside, the ground floor)
+    const pf = floorOfY(cam.y - 1.62);
+    const near = (fl: number) => Math.abs(fl - pf) <= 1;
     // customers
     const cseen = new Set<string>();
     const occupied = new Set<string>();
@@ -157,8 +166,9 @@ export class View {
       if (!e) { const v = new CharView(c.model, { tint: c.tint }); e = { v, tx: c.x, tz: c.z, ty: c.y, try: c.ry, init: false }; this.custs.set(c.id, e); this.root.add(v.root); v.root.userData.target = { kind: 'cust', id: c.id }; }
       e.tx = c.x; e.tz = c.z; e.try = c.ry;
       const r = e.v.root;
-      if (!e.init || w.isHost) { r.position.set(c.x, 0, c.z); r.rotation.y = c.ry; e.init = true; }
-      else { r.position.x = damp(r.position.x, c.x, 10, dt); r.position.z = damp(r.position.z, c.z, 10, dt); r.rotation.y = dampAngle(r.rotation.y, c.ry, 10, dt); }
+      if (!e.init || w.isHost) { r.position.set(c.x, c.y || 0, c.z); r.rotation.y = c.ry; e.init = true; }
+      else { r.position.x = damp(r.position.x, c.x, 10, dt); r.position.z = damp(r.position.z, c.z, 10, dt); r.position.y = damp(r.position.y, c.y || 0, 10, dt); r.rotation.y = dampAngle(r.rotation.y, c.ry, 10, dt); }
+      r.visible = near(c.fl || 0);
       const build = ITEM[w.obj(c.target || '')?.item || '']?.build;
       e.v.seatY = build === 'console' ? 0.42 : build === 'racing' ? 0.36 : 0.5;
       e.v.update(dt, c.anim, cam);
@@ -180,12 +190,14 @@ export class View {
         v = new CharView(st.body === 'female' ? 'humanFemaleA' : 'humanMaleA');
         const role = STAFF.find(r => r.id === st.role);
         v.setLook({ shirt: role?.shirt || '#4cc9f0', pants: '#2b2d42', skin: (st.name.length * 7) % 6, hat: 'cap', hatColor: role?.shirt || '#4cc9f0' });
-        v.setLabel(`${role?.icon || ''} ${st.name}`, '#fff');
         this.staff.set(st.id, v); this.root.add(v.root);
       }
+      const lvl = s.staff.find(m => m.id === st.id)?.lvl || 1;
+      v.setLabel(`${STAFF.find(r => r.id === st.role)?.icon || ''} ${st.name}${lvl > 1 ? ' ' + '★'.repeat(lvl) : ''}`, '#fff');
       const r = v.root;
-      if (w.isHost) { r.position.set(st.x, 0, st.z); r.rotation.y = st.ry; }
-      else { r.position.x = damp(r.position.x, st.x, 10, dt); r.position.z = damp(r.position.z, st.z, 10, dt); r.rotation.y = dampAngle(r.rotation.y, st.ry, 10, dt); }
+      if (w.isHost) { r.position.set(st.x, st.y || 0, st.z); r.rotation.y = st.ry; }
+      else { r.position.x = damp(r.position.x, st.x, 10, dt); r.position.z = damp(r.position.z, st.z, 10, dt); r.position.y = damp(r.position.y, st.y || 0, 10, dt); r.rotation.y = dampAngle(r.rotation.y, st.ry, 10, dt); }
+      r.visible = near(st.fl || 0);
       v.update(dt, st.anim, cam);
       people.push(r.position);
     }
@@ -217,7 +229,14 @@ export class View {
       e.o.position.set(r.position.x + Math.sin(r.rotation.y) * 0.42, r.position.y + 0.82, r.position.z + Math.cos(r.rotation.y) * 0.42);
       e.o.rotation.y = r.rotation.y;
     }
-    // objects: screens, smoke, neon at night
+    // objects: screens, smoke, neon at night (and hide floors you can't see)
+    if (this.cullFloor !== pf) {
+      this.cullFloor = pf;
+      for (const o of s.objects) { const v = this.objs.get(o.id); if (v) v.root.visible = near(o.wall ? floorOfY(o.y ?? 1.8) : o.fl || 0); }
+      for (const e of this.boxes.values()) if (!e.o.userData.hiddenByCarry) e.o.userData.cullHide = !near(e.o.userData.fl || 0);
+      for (const t of this.trash.values()) t.visible = near(t.userData.fl || 0);
+    }
+    for (const e of this.boxes.values()) if (e.o.userData.cullHide) e.o.visible = false;
     for (const [id, v] of this.objs) {
       const used = occupied.has(id);
       for (const m of v.screens) { m.emissiveIntensity = used ? 1.3 : 0.25 + this.gfx.night * 0.2; if (m.map && used) m.map.offset.x = (this.time * 0.15) % 1; }
@@ -231,8 +250,8 @@ export class View {
     }
     this.updateCounterItems();
     // door opens for anyone nearby
-    const near = people.some(p => Math.abs(p.x - DOOR.x) < 1.6 && Math.abs(p.z) < 2.2);
-    this.shell.update(dt, this.gfx.night, near, this.time);
+    const nearDoor = people.some(p => p.y < 1 && Math.abs(p.x - DOOR.x) < 1.6 && Math.abs(p.z) < 2.2);
+    this.shell.update(dt, this.gfx.night, nearDoor, this.time, pf, people);
     this.city.update(dt, s.time, this.gfx.night, cam, people.slice(0, 1).concat([...w.players.values()]));
     // cash popups
     for (const p of [...this.popups]) {
@@ -266,11 +285,11 @@ export class View {
         const pr = productProto(pd.mesh, pd.color);
         const m = new THREE.Mesh(pr.geo, pr.mat);
         const p = cs.itemsAt(i, left.length);
-        m.position.set(p.x, cs.topY, p.z);
+        m.position.set(p.x, floorY(k.fl || 0) + cs.topY, p.z);
         m.rotation.y = k.rot * Math.PI / 2;
         const g = new THREE.Group(); g.add(m);
         const hit = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshBasicMaterial({ visible: false }));
-        hit.position.set(p.x, cs.topY + 0.1, p.z); hit.userData.ownGeo = true; g.add(hit);
+        hit.position.set(p.x, floorY(k.fl || 0) + cs.topY + 0.1, p.z); hit.userData.ownGeo = true; g.add(hit);
         g.userData.target = { kind: 'scan', id: c.id };
         this.counterItems.add(g);
       });

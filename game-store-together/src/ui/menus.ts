@@ -64,7 +64,7 @@ export class Menus {
     const name = el('input', { class: 'field', maxlength: 24, value: api.profile?.shopName || `${api.profile?.username || 'My'}'s Game Store`, id: 'new-shop-name' }) as HTMLInputElement;
     const m = modal([
       el('h2', {}, '✨ New game'),
-      el('p', {}, `You start with $100, a starter gaming laptop and the manager laptop. ${this.a.hasSave() ? '⚠️ This replaces your current shop.' : ''}`),
+      el('p', {}, `You start with $100, a starter gaming laptop and your own office. ${this.a.hasSave() ? '⚠️ This replaces your current shop.' : ''}`),
       el('label', { class: 'muted', for: 'new-shop-name' }, 'Shop name'), name,
       el('div', { class: 'row', style: { marginTop: '12px' } }, el('button', { class: 'btn coral', onclick: () => { m.close(); this.a.newGame(name.value.trim() || 'Game Store Together'); } }, 'Open my shop!')),
     ]);

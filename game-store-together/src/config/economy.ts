@@ -55,6 +55,9 @@ export const STAFF: StaffRole[] = [
   { id: 'technician', name: 'Technician', wage: 55, level: 4, icon: '🔧', desc: 'Repairs broken stations.', shirt: '#80ed99' },
 ];
 export const MAX_STAFF_PER_ROLE = 3;
+/** staff get better with work (or training): faster on their feet and at the job, and paid a bit more */
+export const STAFF_SKILL = { max: 5, xpFor: (lvl: number) => 25 + lvl * 20, wage: 8, speed: 0.08, work: 0.12, train: (lvl: number) => 90 * lvl };
+export const staffWage = (role: string, lvl = 1) => (STAFF.find(r => r.id === role)?.wage || 0) + (Math.max(1, lvl) - 1) * STAFF_SKILL.wage;
 export const STAFF_NAMES = ['Alex', 'Sam', 'Robin', 'Jo', 'Kai', 'Mika', 'Noor', 'Theo', 'Lena', 'Rafa', 'Ivy', 'Ezra', 'Juno', 'Milo', 'Zoe', 'Ari'];
 
 export interface Expansion { w: number; d: number; price: number; level: number; rent: number }
@@ -87,5 +90,19 @@ export const LIGHTS: Style[] = [
   { id: 'rgb', name: 'RGB Party', price: 300, level: 3, a: '#ff4fd8', b: '#3ee6ff' },
   { id: 'sunset', name: 'Sunset Glow', price: 220, level: 2, a: '#ffb4a2', b: '#e5989b' },
 ];
+
+/** extra storeys: 4 floors max, 7 after a rebirth */
+export interface Storey { n: number; price: number; level: number; rent: number; rebirth?: boolean }
+export const STOREYS: Storey[] = [
+  { n: 2, price: 4000, level: 6, rent: 30 },
+  { n: 3, price: 9000, level: 8, rent: 45 },
+  { n: 4, price: 16000, level: 10, rent: 60 },
+  { n: 5, price: 26000, level: 12, rent: 80, rebirth: true },
+  { n: 6, price: 38000, level: 14, rent: 100, rebirth: true },
+  { n: 7, price: 55000, level: 16, rent: 125, rebirth: true },
+];
+export const ELEVATOR = { price: 5000, level: 8, power: 6 };
+/** each rebirth: +25% income, +15% XP and a bigger starting budget, forever */
+export const REBIRTH = { income: 0.25, xp: 0.15, startMoney: 500 };
 
 export const DELIVERY_ZONE = { w: 2.2, d: 2.2 }; // inside, front-left corner

@@ -247,3 +247,45 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .goals-hud > div { font-size: 10.5px; padding: 1px 6px; border-width: 1.5px; max-width: 58vw; }
 }
 .goals-hud[hidden] { display: none; }
+
+/* tap target for the folded goals line on touch screens */
+@media (pointer: coarse) { .hud > .hud-top > .goals-hud { pointer-events: auto; cursor: pointer; } }
+.goals-hud .more { opacity: .6; font-size: .9em; }
+
+/* ---------- phones held sideways: keep the HUD slim ---------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hud-top { top: max(6px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); gap: 4px; max-width: calc(100vw - 200px); }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 9px; gap: 4px; border-width: 1.5px; box-shadow: 0 2px 0 rgba(0,0,0,.18); }
+  .pill .xp { width: 28px; height: 5px; }
+  .hud-right { top: max(6px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+  .hud-right .pill { font-size: 11px; }
+  .goals-hud > div { font-size: 10.5px; padding: 1px 7px; border-width: 1.5px; max-width: 46vw; border-radius: 8px; }
+  .toasts { top: 34px; width: min(440px, 60vw); }
+  .toast { font-size: 12px; padding: 4px 10px; border-width: 1.5px; }
+  .hint { left: 50%; transform: translateX(-50%); bottom: max(8px, env(safe-area-inset-bottom)); max-width: 34vw; font-size: 10.5px; padding: 5px 9px; line-height: 1.25; border-width: 1.5px; }
+  .prompt { top: calc(50% + 24px); }
+  .prompt div { font-size: 12px; padding: 3px 9px; }
+  .carry { bottom: 140px; font-size: 11px; padding: 5px 9px; }
+  .ttop { top: 40px; gap: 6px; }
+  .ttop .tbtn { width: 46px; height: 46px; }
+  .tbtns { grid-template-columns: repeat(3, 50px); gap: 6px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .tbtn { width: 50px; height: 50px; font-size: 9px; }
+  .tbtn b { font-size: 17px; }
+  .tbtn.big { height: 46px; font-size: 14px; }
+  .fps { bottom: 2px; font-size: 10px; }
+  .joy { bottom: calc(26px + env(safe-area-inset-bottom)); width: 104px; height: 104px; }
+  .joy-knob { left: 29px; top: 29px; width: 46px; height: 46px; }
+}
+
+/* ---------- floors & rebirth ---------- */
+.floors-row { align-items: flex-start; gap: 14px; }
+.floor-stack { display: flex; flex-direction: column; gap: 3px; min-width: 54px; }
+.floor-stack .fs { height: 22px; border-radius: 6px; border: 2px dashed #cbbd9c; color: #a08f6c; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+.floor-stack .fs.on { border: 2px solid var(--ink); background: linear-gradient(90deg, #ffd166, #ff7a59); color: var(--ink); }
+.floor-stack .fs.lock { border-color: #c9c3e6; color: #7b6fd6; background: #f1eeff; }
+.section.rebirth { background: linear-gradient(135deg, #f3e9ff, #e0f7ff); border: 2px solid var(--ink); border-radius: 14px; padding: 12px 14px; }
+
+/* ---------- staff skills ---------- */
+.staff-row { border-top: 1px dashed #d9ccb2; padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.staff-row .stars { color: #f4a261; letter-spacing: 1px; font-size: 13px; }
+.staff-row .btn.small { padding: 4px 8px; font-size: 12px; }

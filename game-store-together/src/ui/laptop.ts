@@ -1,6 +1,8 @@
 /* The manager laptop: a full-screen "ShopOS" app with the shop catalogue, stock & prices, staff, expansion & styles, licenses & perks, reviews and stats. */
 import { CATEGORIES, ITEMS, ITEM, PRODUCTS, type CategoryId } from '../config/items';
-import { STAFF, EXPANSIONS, FLOORS, WALLS, LIGHTS, LICENSES, PERKS, MAX_STAFF_PER_ROLE, ECON } from '../config/economy';
+import { STAFF, EXPANSIONS, FLOORS, WALLS, LIGHTS, LICENSES, PERKS, MAX_STAFF_PER_ROLE, ECON, ELEVATOR, REBIRTH, STAFF_SKILL, staffWage } from '../config/economy';
+import { maxFloors, nextStorey } from '../sim/building';
+import { modal } from './panels';
 import { CUSTOMERS, REGULARS, hearts } from '../config/npcs';
 import { GOAL, ACHIEVEMENTS } from '../config/goals';
 import { el, money, esc } from '../core/util';
@@ -147,13 +149,22 @@ export class Laptop {
       const team = s.staff.filter(m => m.role === r.id);
       const lock = r.level > s.level;
       const list = el('div', {});
-      for (const m of team) list.append(el('div', { class: 'row' }, el('span', { class: 'grow' }, `${r.icon} ${m.name}`), el('button', { class: 'btn small ghost', onclick: () => this.game.act({ t: 'fire', id: m.id }) }, 'Let go')));
+      for (const m of team) {
+        const lvl = m.lvl || 1, maxed = lvl >= STAFF_SKILL.max, cost = STAFF_SKILL.train(lvl);
+        list.append(el('div', { class: 'staff-row' },
+          el('div', { class: 'row' }, el('b', { class: 'grow' }, `${r.icon} ${m.name}`), el('span', { class: 'stars', title: `Skill ${lvl}/${STAFF_SKILL.max}` }, '★'.repeat(lvl) + '☆'.repeat(STAFF_SKILL.max - lvl))),
+          el('div', { class: 'row' }, el('span', { class: 'muted' }, `${money(staffWage(m.role, lvl))}/day`),
+            maxed ? el('span', { class: 'chip good' }, 'Pro') : el('div', { class: 'bar grow', title: 'Experience' }, el('i', { style: { width: Math.min(100, ((m.xp || 0) / STAFF_SKILL.xpFor(lvl)) * 100) + '%' } }))),
+          el('div', { class: 'row' },
+            maxed ? el('span', { class: 'grow' }) : el('button', { class: 'btn small grow', disabled: s.money < cost, onclick: () => this.game.act({ t: 'train', id: m.id }).then(x => { if (x.ok) audio.play('levelup'); }) }, `🎓 Train ${money(cost)}`),
+            el('button', { class: 'btn small ghost', onclick: () => this.game.act({ t: 'fire', id: m.id }) }, 'Let go'))));
+      }
       wrap.append(el('div', { class: 'card' + (lock ? ' locked' : '') }, el('div', { class: 'thumb', style: { fontSize: '54px' } }, r.icon), el('h3', {}, r.name), el('p', {}, r.desc),
         el('div', { class: 'stats' }, el('span', { class: 'chip' }, `${money(r.wage)}/day`), el('span', { class: 'chip' }, `${team.length}/${MAX_STAFF_PER_ROLE} hired`), lock ? el('span', { class: 'chip lock' }, `🔒 Level ${r.level}`) : null),
         list, el('button', { class: 'btn small coral', disabled: lock || team.length >= MAX_STAFF_PER_ROLE, onclick: () => this.game.act({ t: 'hire', role: r.id }) }, `Hire ${r.name}`)));
     }
-    const wages = s.staff.reduce((a, m) => a + (STAFF.find(r => r.id === m.role)?.wage || 0), 0);
-    this.body.append(el('p', { class: 'muted' }, `Salaries are paid at the end of each day. Current total: ${money(wages)}/day.`), wrap);
+    const wages = s.staff.reduce((a, m) => a + staffWage(m.role, m.lvl), 0);
+    this.body.append(el('p', { class: 'muted' }, `Salaries are paid at the end of each day. Current total: ${money(wages)}/day. Staff gain skill (★) as they work, or train them: each level makes them ${Math.round(STAFF_SKILL.speed * 100)}% faster on their feet and ${Math.round(STAFF_SKILL.work * 100)}% quicker at the job, for $${STAFF_SKILL.wage}/day more.`), wrap);
   }
 
   private renderExpand() {
@@ -164,6 +175,25 @@ export class Laptop {
       el('p', {}, `Your shop is ${ww} × ${d} m (rent ${money(EXPANSIONS[s.expansion].rent)}/day).`),
       next ? el('div', { class: 'row' }, el('span', { class: 'grow' }, `Next: ${next.w} × ${next.d} m · rent ${money(next.rent)}/day ${next.level > s.level ? `· 🔒 level ${next.level}` : ''}`),
         el('button', { class: 'btn coral', disabled: next.level > s.level || s.money < next.price, onclick: () => this.buy({ t: 'expand' }) }, `Expand for ${money(next.price)}`)) : el('p', { class: 'chip good' }, 'Maxed out — the whole lot is yours!'));
+    // floors, elevator, rebirth
+    const floors = s.floors || 1, cap = maxFloors(s), nx = nextStorey(s);
+    const rb = s.rebirths || 0;
+    const tower = el('div', { class: 'floor-stack' });
+    for (let i = Math.max(cap, floors); i >= 1; i--) tower.append(el('div', { class: 'fs' + (i <= floors ? ' on' : '') + (i > cap ? ' lock' : '') }, i <= floors ? `${i}F` : i > cap ? '💎' : '·'));
+    const floorWhy = !nx ? '' : nx.n > cap ? 'Rebirth to build higher' : s.expansion < 1 ? 'Expand the lot once first' : nx.level > s.level ? `🔒 Level ${nx.level}` : '';
+    const floorBox = el('div', { class: 'section' }, el('h3', {}, '🏢 Floors'),
+      el('div', { class: 'row floors-row' }, tower, el('div', { class: 'grow' },
+        el('p', {}, `Your shop has ${floors} floor${floors > 1 ? 's' : ''} (up to ${cap}${cap < 7 ? ', 7 after a rebirth' : ''}). Stairs go in the back-left corner and every floor adds rent. Customers don't love climbing: higher floors are less popular until you get an elevator.`),
+        nx && nx.n <= cap ? el('div', { class: 'row' }, el('span', { class: 'grow' }, `Floor ${nx.n} · rent +${money(nx.rent)}/day ${floorWhy ? '· ' + floorWhy : ''}`),
+          el('button', { class: 'btn coral', disabled: !!floorWhy || s.money < nx.price, onclick: () => this.buy({ t: 'buildFloor' }) }, `Build floor ${nx.n} for ${money(nx.price)}`)) : el('p', { class: 'chip good' }, floors >= 7 ? 'Tallest shop in town!' : `All ${cap} floors built: time to rebirth?`),
+        floors >= 2 ? el('div', { class: 'row' }, el('span', { class: 'grow' }, s.elevator ? '🛗 Elevator installed: customers happily go up.' : `🛗 Elevator: customers reach high floors faster and like them more. ${ELEVATOR.level > s.level ? `🔒 Level ${ELEVATOR.level}` : ''}`),
+          s.elevator ? null : el('button', { class: 'btn', disabled: ELEVATOR.level > s.level || s.money < ELEVATOR.price, onclick: () => this.buy({ t: 'buyElevator' }) }, `Install for ${money(ELEVATOR.price)}`)) : null)));
+    const canRebirth = floors >= cap;
+    const rebirthBox = el('div', { class: 'section rebirth' }, el('h3', {}, `💎 Rebirth${rb ? ` · ${rb} so far` : ''}`),
+      el('p', {}, `Start over with a fresh little shop and keep a permanent bonus: +${REBIRTH.income * 100}% income and +${REBIRTH.xp * 100}% XP for every rebirth, $${REBIRTH.startMoney} more to start with, and the first rebirth unlocks floors 5–7.`),
+      el('p', { class: 'muted' }, 'You keep your regulars, achievements, owned styles, shop name and lifetime stats. Money, level, stations, staff, licenses, perks, the lot and the floors start over.'),
+      rb ? el('p', { class: 'chip good' }, `Now: income +${Math.round(REBIRTH.income * 100 * rb)}% · XP +${Math.round(REBIRTH.xp * 100 * rb)}%`) : null,
+      el('button', { class: 'btn coral', disabled: !canRebirth, onclick: () => this.confirmRebirth() }, canRebirth ? '💎 Rebirth now' : `Build all ${cap} floors to rebirth (${floors}/${cap})`));
     const nameIn = el('input', { class: 'field', value: s.shopName, maxlength: 24, id: 'shop-name' }) as HTMLInputElement;
     const name = el('div', { class: 'section' }, el('h3', {}, '🪧 Shop name & sign'), el('div', { class: 'row' }, el('div', { class: 'grow' }, nameIn), el('button', { class: 'btn', onclick: () => this.game.act({ t: 'shopName', name: nameIn.value }) }, 'Update sign')));
     const styles = (title: string, kind: 'floor' | 'wall' | 'light', list: typeof FLOORS) => {
@@ -176,7 +206,20 @@ export class Laptop {
       }
       return el('div', { class: 'section' }, el('h3', {}, title), g);
     };
-    this.body.append(exp, name, styles('🧱 Floors', 'floor', FLOORS), styles('🎨 Walls', 'wall', WALLS), styles('💡 Lights', 'light', LIGHTS));
+    this.body.append(exp, floorBox, rebirthBox, name, styles('🧱 Floors', 'floor', FLOORS), styles('🎨 Walls', 'wall', WALLS), styles('💡 Lights', 'light', LIGHTS));
+  }
+
+  private confirmRebirth() {
+    const s = this.game.world.save, n = (s.rebirths || 0) + 1;
+    const m = modal([
+      el('h2', {}, `💎 Rebirth #${n}?`),
+      el('p', {}, `Your shop starts over from a single laptop, with ${money(ECON.startMoney + REBIRTH.startMoney * n)} in the bank.`),
+      el('p', {}, `Forever after: income +${Math.round(REBIRTH.income * 100 * n)}%, XP +${Math.round(REBIRTH.xp * 100 * n)}%, and up to 7 floors.`),
+      el('p', { class: 'muted' }, 'Kept: regulars, achievements, styles, shop name, lifetime stats.'),
+      el('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '8px' } },
+        el('button', { class: 'btn', onclick: () => m.close() }, 'Not yet'),
+        el('button', { class: 'btn coral', onclick: async () => { m.close(); const r = await this.game.act({ t: 'rebirth' }); if (r.ok) { audio.play('levelup'); this.game.afterRebirth(); this.close(); } } }, '💎 Rebirth')),
+    ]);
   }
 
   private renderPerks() {

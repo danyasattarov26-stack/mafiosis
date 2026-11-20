@@ -61,6 +61,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'expand', icon: '🏗️', name: 'Moving On Up', desc: 'Expand the shop.', check: s => s.expansion >= 1, xp: 25 },
   { id: 'maxlot', icon: '🏙️', name: 'Mega Store', desc: 'Expand to the biggest lot.', check: s => s.expansion >= 4, xp: 120 },
   { id: 'staff', icon: '👥', name: 'Team Player', desc: 'Hire your first employee.', check: s => s.staff.length >= 1, xp: 15 },
+  { id: 'pro', icon: '🎓', name: 'Mentor', desc: 'Get an employee to skill level 5.', check: s => s.staff.some(m => (m.lvl || 1) >= 5), xp: 60 },
   { id: 'staff6', icon: '🏢', name: 'Big Boss', desc: 'Have 6 employees at once.', check: s => s.staff.length >= 6, xp: 60 },
   { id: 'stream', icon: '📢', name: 'We’re Live!', desc: 'Host your first live stream.', check: s => (L(s).streams || 0) >= 1, xp: 25 },
   { id: 'stream50', icon: '📡', name: 'Streaming Capital', desc: 'Host 50 live streams.', check: s => (L(s).streams || 0) >= 50, xp: 80 },
@@ -71,6 +72,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'clean', icon: '🧹', name: 'Spotless', desc: 'Clean up 100 messes.', check: s => (L(s).cleaned || 0) >= 100, xp: 50 },
   { id: 'thief', icon: '🚨', name: 'Neighbourhood Watch', desc: 'Catch 5 thieves.', check: s => (L(s).caught || 0) >= 5, xp: 40 },
   { id: 'five', icon: '🏅', name: 'Crowd Favourite', desc: 'Get 25 five-star reviews.', check: s => (L(s).fiveStar || 0) >= 25, xp: 60 },
+  { id: 'floor2', icon: '🪜', name: 'Going Up', desc: 'Build a second floor.', check: s => (s.floors || 1) >= 2, xp: 40 },
+  { id: 'floor4', icon: '🏢', name: 'Skyscraper', desc: 'Build 4 floors.', check: s => (s.floors || 1) >= 4, xp: 100 },
+  { id: 'lift', icon: '🛗', name: 'Express Service', desc: 'Install an elevator.', check: s => !!s.elevator, xp: 40 },
+  { id: 'rebirth', icon: '💎', name: 'Born Again', desc: 'Rebirth your shop.', check: s => (s.rebirths || 0) >= 1, xp: 100 },
+  { id: 'floor7', icon: '🏙️', name: 'Tower Tycoon', desc: 'Build all 7 floors.', check: s => (s.floors || 1) >= 7, xp: 250 },
   { id: 'allpc', icon: '🖥️', name: 'Collector', desc: 'Own a Retro PC, Streamer Pod, Sim Racing Rig and VR Station.', check: s => ['st_retro', 'st_stream', 'st_racing', 'st_vr'].every(id => s.objects.some(o => o.item === id)), xp: 100 },
 ];
 export const ACHIEVEMENT = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]));

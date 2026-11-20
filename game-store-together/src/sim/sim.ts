@@ -2,14 +2,15 @@
   Host-side simulation: the clock, walk-ins, customer behaviour, staff, deliveries, mess, breakdowns,
   money, XP, reviews and the end-of-day summary. Only the host (or a solo player) runs this.
 */
-import { ECON, EXPANSIONS, PERKS, STAFF, xpForLevel, XP, LICENSES } from '../config/economy';
+import { ECON, EXPANSIONS, PERKS, STAFF, xpForLevel, XP, LICENSES, STOREYS, ELEVATOR, REBIRTH, STAFF_SKILL, staffWage } from '../config/economy';
 import { ITEM, ITEMS, PRODUCTS, MEALS, MEAL } from '../config/items';
 import { CUSTOMERS, REVIEW_LINES, REGULARS, REGULAR, hearts, type CustomerType } from '../config/npcs';
 import { GOAL, ACHIEVEMENTS, rollGoals } from '../config/goals';
 import { emptyDay, type PlacedObject, type Box } from '../core/save';
 import { clamp, pick, rand, chance, uid, angleDelta } from '../core/util';
 import { preset } from '../core/settings';
-import { World, type Customer, type StaffNpc, type DaySummary, type Anim } from './world';
+import { World, type Customer, type StaffNpc, type DaySummary, type Anim, type Where, type PathPt } from './world';
+import { floorY, distF, stairs } from './building';
 import { useSpots, seats, counterSpots, foodSpots, deliveryZone, shopSize, dist, DOOR, SIDEWALK_Z, type V2 } from './layout';
 
 const has = (w: World, perk: string) => w.save.perks.includes(perk);
@@ -17,6 +18,7 @@ const svc = (w: World, s: string) => w.save.services.includes(s);
 const kindOf = (o: PlacedObject) => ITEM[o.item]?.kind;
 const SHOUTS = ['📢', '😱', '🔥', '💬', '🤬', '🏆', '😂', '❤️', '🎉', '💀'];
 const PLAY_ANIM: Record<string, Anim> = { racing: 'drive', vr: 'vr' };
+const fy = (o: { fl?: number }) => floorY(o.fl || 0);
 
 export class Sim {
   w: World;
@@ -52,9 +54,32 @@ export class Sim {
   }
   fairSession(o: PlacedObject) { const d = ITEM[o.item]; return ECON.sessionBase * (d.priceMul || 1) * (1 + 0.1 * (o.mon || 0)); }
   productPrice(p: string) { return this.w.save.prices[p] ?? ITEM[p].product!.market; }
-  power() { return this.w.save.objects.reduce((a, o) => a + (ITEM[o.item]?.power || 0), 0); }
-  rent() { return Math.round(EXPANSIONS[this.w.save.expansion].rent * (has(this.w, 'landlord') ? 0.75 : 1)); }
-  wages() { return this.w.save.staff.reduce((a, s) => a + (STAFF.find(r => r.id === s.role)?.wage || 0), 0); }
+  power() { return this.w.save.objects.reduce((a, o) => a + (ITEM[o.item]?.power || 0), 0) + (this.w.save.elevator ? ELEVATOR.power : 0); }
+  rent() {
+    const s = this.w.save;
+    const floors = STOREYS.filter(f => f.n <= (s.floors || 1)).reduce((a, f) => a + f.rent, 0);
+    return Math.round((EXPANSIONS[s.expansion].rent + floors) * (has(this.w, 'landlord') ? 0.75 : 1));
+  }
+  /** permanent bonuses from rebirths */
+  incomeMul() { return 1 + REBIRTH.income * (this.w.save.rebirths || 0); }
+  xpMul() { return 1 + REBIRTH.xp * (this.w.save.rebirths || 0); }
+  wages() { return this.w.save.staff.reduce((a, s) => a + staffWage(s.role, s.lvl), 0); }
+  /** a staff member's skill level and what it does for them */
+  skill(st: StaffNpc) {
+    const lvl = this.w.save.staff.find(m => m.id === st.id)?.lvl || 1;
+    return { lvl, speed: 1 + STAFF_SKILL.speed * (lvl - 1), work: 1 - STAFF_SKILL.work * (lvl - 1) };
+  }
+  /** experience from a finished job; levels up now and then */
+  staffXp(st: StaffNpc, n: number) {
+    const m = this.w.save.staff.find(x => x.id === st.id); if (!m) return;
+    m.lvl = m.lvl || 1; m.xp = (m.xp || 0) + n;
+    if (m.lvl < STAFF_SKILL.max && m.xp >= STAFF_SKILL.xpFor(m.lvl)) {
+      m.xp -= STAFF_SKILL.xpFor(m.lvl); m.lvl++;
+      const role = STAFF.find(r => r.id === m.role);
+      this.w.ev.emit('toast', { msg: `⭐ ${role?.icon || ''} ${m.name} the ${role?.name.toLowerCase() || 'worker'} reached skill level ${m.lvl}: faster and better at the job!`, kind: 'good' });
+      this.w.bump();
+    }
+  }
 
   // ---------- main tick ----------
   tick(dt: number) {
@@ -139,7 +164,7 @@ export class Sim {
     const side = chance(0.5) ? -1 : 1;
     const c: Customer = {
       id: uid('c'), type: t.id, model: pick(t.models), tint: Math.floor(Math.random() * 6),
-      x: side * rand(9, 14), z: SIDEWALK_Z + rand(-0.3, 0.3), y: 0, ry: side > 0 ? -Math.PI / 2 : Math.PI / 2, anim: 'walk',
+      x: side * rand(9, 14), z: SIDEWALK_Z + rand(-0.3, 0.3), y: 0, fl: 0, ry: side > 0 ? -Math.PI / 2 : Math.PI / 2, anim: 'walk',
       state: 'enter', t: 0, tMax: 0, patience: 0, path: [], speed: t.speed * rand(0.9, 1.1),
       target: null, seat: -1, plan: [], cart: [], scanned: 0, pay: 'card', given: 0,
       sat: reg ? 76 : 72, reasons: [], progress: 0, bubble: '', queueAt: null, after: null, order: null, regular: reg ? reg.id : null,
@@ -156,19 +181,25 @@ export class Sim {
     return c;
   }
 
-  private walk(e: { x: number; z: number; ry: number; path: V2[]; anim: string }, speed: number, dt: number) {
+  private walk(e: { x: number; z: number; y: number; fl: number; ry: number; path: PathPt[]; anim: string }, speed: number, dt: number) {
     if (!e.path.length) return true;
     const p = e.path[0];
+    if (p.tp) { e.x = p.x; e.z = p.z; if (p.y != null) e.y = p.y; if (p.fl != null) e.fl = p.fl; e.path.shift(); return !e.path.length; }
     const dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
     const step = speed * dt;
-    if (d <= step + 0.02) { e.x = p.x; e.z = p.z; e.path.shift(); return !e.path.length; }
+    if (d <= step + 0.02) {
+      if (p.wait && p.wait > 0) { e.x = p.x; e.z = p.z; p.wait -= dt; return false; }   // riding the elevator
+      e.x = p.x; e.z = p.z; if (p.y != null) e.y = p.y; if (p.fl != null) e.fl = p.fl;
+      e.path.shift(); return !e.path.length;
+    }
+    if (p.y != null) e.y += (p.y - e.y) * Math.min(1, step / d);    // climbing the stairs
     e.x += (dx / d) * step; e.z += (dz / d) * step;
     const want = Math.atan2(dx, dz);
     e.ry += angleDelta(e.ry, want) * Math.min(1, dt * 10);
     return false;
   }
-  private goTo(c: Customer | StaffNpc, to: V2, state: string) {
-    c.path = this.w.nav.route({ x: c.x, z: c.z }, to);
+  private goTo(c: Customer | StaffNpc, to: Where, state: string) {
+    c.path = this.w.route({ x: c.x, z: c.z, fl: c.fl }, to);
     c.state = state; c.anim = 'walk';
   }
 
@@ -218,6 +249,7 @@ export class Sim {
         if (d.build === 'racing') score += c.type === 'pro' ? 3 : c.type === 'spender' ? 2 : 0.5;
         if (d.build === 'vr') score += c.type === 'kid' ? 2.5 : c.type === 'spender' ? 3 : 1;
         if (d.build === 'retro') score += c.type === 'kid' ? 2.5 : c.type === 'casual' ? 1.5 : c.type === 'pro' ? -3 : 0;
+        score -= (o.fl || 0) * (this.w.save.elevator ? 0.3 : 1.1);   // stairs are a climb
         list.push({ o, seat: i, score });
       }
     }
@@ -260,7 +292,7 @@ export class Sim {
   waitSpots(): V2[] {
     const { w } = shopSize(this.w.save);
     const out: V2[] = [];
-    for (const x of [1.7, 2.5, 3.3, 4.1, -1.7]) for (const z of [-0.8, -1.6]) if (Math.abs(x) < w / 2 - 0.4) out.push({ x, z });
+    for (const x of [1.7, 2.5, 3.3, 4.1, -1.7]) for (const z of [-0.8, -1.6]) if (Math.abs(x) < w / 2 - 0.4) out.push({ x, z, fl: 0 } as V2);
     return out;
   }
 
@@ -291,7 +323,7 @@ export class Sim {
       const p = c.plan[0];
       const shelves = this.w.save.objects.filter(o => o.product === p && (o.stock || 0) > 0 && kindOf(o) !== 'foodbar');
       if (!shelves.length) { c.plan.shift(); c.sat -= 8; c.reasons.push('stock'); continue; }
-      shelves.sort((a, b) => dist(a, c) - dist(b, c));
+      shelves.sort((a, b) => distF(a, c) - distF(b, c));
       const o = shelves[0];
       const spots = useSpots(o);
       const spot = spots.sort((a, b) => dist(a, c) - dist(b, c))[0];
@@ -310,7 +342,7 @@ export class Sim {
     const trouble = CUSTOMERS[c.type].trouble;
     if (trouble && !this.friendly(c) && chance(trouble.steal * (svc(this.w, 'cctv') ? 0.4 : 1))) {
       c.state = 'steal'; c.anim = 'run'; c.bubble = '🏃';
-      c.path = this.w.nav.route({ x: c.x, z: c.z }, { x: chance(0.5) ? -20 : 20, z: SIDEWALK_Z });
+      c.path = this.w.route({ x: c.x, z: c.z, fl: c.fl }, { x: chance(0.5) ? -20 : 20, z: SIDEWALK_Z, fl: 0 });
       return true;
     }
     counters.sort((a, b) => (this.w.queues.get(a.id)?.length || 0) - (this.w.queues.get(b.id)?.length || 0));
@@ -362,7 +394,7 @@ export class Sim {
     const price = this.mealPrice(c.order!);
     if (price > MEAL[c.order!].price * CUSTOMERS[c.type].priceTolerance) { c.sat -= 10; c.reasons.push('price'); }
     else c.sat += 10;
-    this.earn(price, 'food', k.x, k.z);
+    this.earn(price, 'food', k.x, k.z, fy(k));
     w.today().meals++; w.save.lifetime.meals++;
     this.addXp(XP.meal);
     c.order = null; c.after = 'eat';
@@ -382,7 +414,7 @@ export class Sim {
     if (reason) { c.reasons.push(reason); c.sat += satDelta; }
     c.bubble = c.sat >= 70 ? '😊' : c.sat >= 45 ? '😐' : '😠';
     c.state = 'leave'; c.anim = 'walk'; c.order = null; c.live = false;
-    c.path = this.w.nav.route({ x: c.x, z: c.z }, { x: chance(0.5) ? -22 : 22, z: SIDEWALK_Z + rand(-0.3, 0.3) });
+    c.path = this.w.route({ x: c.x, z: c.z, fl: c.fl }, { x: chance(0.5) ? -22 : 22, z: SIDEWALK_Z + rand(-0.3, 0.3), fl: 0 });
     if (c.cart.length && c.scanned < c.cart.length) c.cart = [];
   }
 
@@ -391,11 +423,14 @@ export class Sim {
     const s = this.w.save;
     let pr = (kind === 'trash' ? tr.litter : tr.spill) * p;
     if (has(this.w, 'tidy')) pr *= 0.65;
-    if (s.objects.some(o => ITEM[o.item]?.kind === 'bin' && dist(o, c) < 5)) pr *= 0.5;
+    if (s.objects.some(o => ITEM[o.item]?.kind === 'bin' && distF(o, c) < 5)) pr *= 0.5;
     if (!chance(pr)) return;
     const { w, d } = shopSize(s);
     if (c.z > -0.3 || c.z < -d + 0.3 || Math.abs(c.x) > w / 2 - 0.3) return;
-    s.trash.push({ id: uid('t'), kind, x: c.x + rand(-0.4, 0.4), z: c.z + rand(-0.4, 0.4), ry: rand(0, 6.28) });
+    const st = stairs(s);
+    if (st && c.x < st.zone.x1 + 0.4 && c.z < st.zone.z1 + 0.4) return;            // not on the stairs
+    if (Math.abs(c.y - floorY(c.fl)) > 0.05) return;
+    s.trash.push({ id: uid('t'), kind, x: c.x + rand(-0.4, 0.4), z: c.z + rand(-0.4, 0.4), ry: rand(0, 6.28), fl: c.fl });
     this.w.bump();
   }
 
@@ -412,7 +447,7 @@ export class Sim {
         if (this.walk(c, sp, dt)) {
           const st = seats(o)[c.seat] || seats(o)[0];
           const d = ITEM[o.item];
-          c.x = st.x; c.z = st.z; c.ry = st.ry; c.anim = PLAY_ANIM[d.build || ''] || 'play';
+          c.x = st.x; c.z = st.z; c.ry = st.ry; c.y = fy(o); c.fl = o.fl || 0; c.anim = PLAY_ANIM[d.build || ''] || 'play';
           if (c.type === 'streamer' && d.build === 'pod') {
             c.live = true; s.today.streams++; s.lifetime.streams++;
             this.shoutT.set(c.id, 1);
@@ -459,7 +494,7 @@ export class Sim {
         if (c.t <= 0) {
           const o = c.target ? w.obj(c.target) : null;
           const price = o ? ITEM[o.item].arcadePrice || 5 : 5;
-          if (o) this.earn(price, 'arcade', o.x, o.z);
+          if (o) this.earn(price, 'arcade', o.x, o.z, fy(o));
           this.addXp(XP.arcade);
           c.sat += 6; c.progress = 0;
           if (o && chance(ITEM[o.item].breakChance || 0)) { o.broken = true; w.bump(); w.ev.emit('toast', { msg: `⚠️ ${ITEM[o.item].name} broke down! Hold E on it to repair.`, kind: 'bad' }); }
@@ -484,7 +519,7 @@ export class Sim {
           }
         } else if (p) { c.sat -= 8; c.reasons.push('stock'); }
         c.state = 'pick'; c.t = 0.6; c.anim = 'idle';
-        if (o) { const spot = useSpots(o).sort((a, b) => dist(a, c) - dist(b, c))[0]; if (spot) c.ry = spot.ry; }
+        if (o) { const spot = useSpots(o).sort((a, b) => distF(a, c) - distF(b, c))[0]; if (spot) c.ry = spot.ry; }
         break;
       }
       case 'pick':
@@ -497,7 +532,7 @@ export class Sim {
         const q = w.queues.get(k.id) || [];
         const i = q.indexOf(c.id);
         const spot = counterSpots(k).queue(Math.max(0, i));
-        if (!c.path.length && dist(c, spot) > 0.15) c.path = [spot];
+        if (!c.path.length && distF(c, spot) > 0.15) c.path = (c.fl === (spot.fl || 0)) ? [spot] : this.w.route(c, spot);
         if (this.walk(c, sp, dt)) {
           c.ry = spot.ry; c.anim = 'idle';
           if (i === 0) { c.state = 'atCounter'; c.scanned = 0; c.bubble = '🧾'; w.bump(); }
@@ -527,7 +562,7 @@ export class Sim {
         const q = w.queues.get(k.id) || [];
         const i = q.indexOf(c.id);
         const spot = foodSpots(k).queue(Math.max(0, i));
-        if (!c.path.length && dist(c, spot) > 0.15) c.path = [spot];
+        if (!c.path.length && distF(c, spot) > 0.15) c.path = (c.fl === (spot.fl || 0)) ? [spot] : this.w.route(c, spot);
         if (this.walk(c, sp, dt)) { c.ry = spot.ry; c.anim = 'idle'; if (i === 0 && c.state === 'foodQ') { c.state = 'foodWait'; w.bump(); } }
         c.patience -= dt * (c.state === 'foodWait' ? 0.8 : 1);
         c.progress = c.state === 'foodWait' ? clamp(1 - c.patience / 40, 0, 1) : 0;
@@ -594,8 +629,8 @@ export class Sim {
       else if (has(w, 'tips') && c.sat > 85) tip = Math.round(rand(1, 5));
       if (c.regular && w.save.regulars[c.regular]?.vip) tip += 3;
       if (c.live) tip += Math.round(rand(3, 9) * def.payMul);     // chat donations
-      this.earn(price, 'session', o.x, o.z);
-      if (tip) this.earn(tip, 'tip', o.x, o.z + 0.3);
+      this.earn(price, 'session', o.x, o.z, fy(o));
+      if (tip) this.earn(tip, 'tip', o.x, o.z + 0.3, fy(o));
       w.today().sessions++; w.save.lifetime.sessions++;
       o.sessions = (o.sessions || 0) + 1;
       this.addXp(XP.session);
@@ -611,7 +646,7 @@ export class Sim {
       }
       // step back out to the front of the station
       const spot = useSpots(o)[Math.min(c.seat, useSpots(o).length - 1)];
-      if (spot) { c.x = spot.x; c.z = spot.z; }
+      if (spot) { c.x = spot.x; c.z = spot.z; c.y = fy(o); }
     }
     if (c.live) { c.live = false; this.shoutT.delete(c.id); c.bubble = ''; }
     this.release(c);
@@ -635,7 +670,7 @@ export class Sim {
       else c.sat += 4;
     }
     const k = c.queueAt ? w.obj(c.queueAt) : null;
-    this.earn(received, 'sale', k ? k.x : c.x, k ? k.z : c.z);
+    this.earn(received, 'sale', k ? k.x : c.x, k ? k.z : c.z, k ? fy(k) : c.y);
     w.today().sales += c.cart.length;
     this.addXp(XP.sale * c.cart.length);
     c.sat += 6;
@@ -732,8 +767,9 @@ export class Sim {
   }
 
   // ---------- money / xp ----------
-  earn(amount: number, kind: 'session' | 'sale' | 'arcade' | 'tip' | 'vending' | 'food' | 'member', x: number, z: number) {
+  earn(amount: number, kind: 'session' | 'sale' | 'arcade' | 'tip' | 'vending' | 'food' | 'member', x: number, z: number, y = 0) {
     const s = this.w.save, t = s.today;
+    if (kind !== 'member') amount = Math.round(amount * this.incomeMul());
     s.money += amount; s.lifetime.revenue += amount;
     if (kind === 'session') t.sessionRev += amount;
     else if (kind === 'sale') t.salesRev += amount;
@@ -742,11 +778,12 @@ export class Sim {
     else if (kind === 'food') t.foodRev += amount;
     else if (kind === 'member') t.members += amount;
     else t.arcadeRev += amount;
-    this.w.ev.emit('cash', { x, z, amount, label: kind === 'tip' ? 'tip' : kind === 'member' ? 'VIP' : undefined });
+    this.w.ev.emit('cash', { x, z, y, amount, label: kind === 'tip' ? 'tip' : kind === 'member' ? 'VIP' : undefined });
     this.w.ev.emit('sfx', { name: kind === 'sale' ? 'cash' : 'coins', x, z });
   }
   addXp(n: number) {
     const s = this.w.save;
+    n *= this.xpMul();
     s.xp += n; s.today.xp += n;
     while (s.xp >= xpForLevel(s.level)) {
       s.xp -= xpForLevel(s.level); s.level++;
@@ -760,7 +797,7 @@ export class Sim {
   syncStaffRoster() {
     const w = this.w;
     for (const m of w.save.staff) if (!w.staff.find(n => n.id === m.id)) {
-      w.staff.push({ id: m.id, role: m.role, name: m.name, body: m.body, x: rand(-0.5, 0.5), z: -1, ry: Math.PI, anim: 'idle', state: 'idle', t: rand(0, 1), path: [], task: null, carry: null, counter: null });
+      w.staff.push({ id: m.id, role: m.role, name: m.name, body: m.body, x: rand(-0.5, 0.5), z: -1, y: 0, fl: 0, ry: Math.PI, anim: 'idle', state: 'idle', t: rand(0, 1), path: [], task: null, carry: null, counter: null });
     }
     for (const n of [...w.staff]) if (!w.save.staff.find(m => m.id === n.id)) {
       if (n.carry) { const b = w.box(n.carry); if (b) { b.carrier = null; b.x = n.x; b.z = n.z; } }
@@ -773,8 +810,9 @@ export class Sim {
 
   private updateStaff(st: StaffNpc, dt: number) {
     const w = this.w, s = w.save;
-    const speed = 1.6 * (has(w, 'sprinter') ? 1.12 : 1);
-    const quick = has(w, 'mechanic') ? 0.5 : 1;
+    const sk = this.skill(st);
+    const speed = 1.6 * (has(w, 'sprinter') ? 1.12 : 1) * sk.speed;
+    const quick = (has(w, 'mechanic') ? 0.5 : 1) * sk.work;
     st.t -= dt;
     if (st.path.length) { st.anim = st.carry ? 'carry' : 'walk'; if (!this.walk(st, speed, dt)) return; st.anim = st.carry ? 'carry' : 'idle'; }
     switch (st.role) {
@@ -783,7 +821,7 @@ export class Sim {
           if (st.t > 0) { st.anim = 'work'; return; }
           const key = st.task?.split(':')[1];
           const ti = s.trash.findIndex(t => t.id === key);
-          if (ti >= 0) { s.trash.splice(ti, 1); s.today.cleaned++; s.lifetime.cleaned++; w.bump(); w.ev.emit('sfx', { name: 'sweep', x: st.x, z: st.z }); }
+          if (ti >= 0) { s.trash.splice(ti, 1); s.today.cleaned++; s.lifetime.cleaned++; this.staffXp(st, 1); w.bump(); w.ev.emit('sfx', { name: 'sweep', x: st.x, z: st.z }); }
           const bi = s.boxes.findIndex(b => b.id === key && b.empty && !b.carrier);
           if (bi >= 0) { s.boxes.splice(bi, 1); w.bump(); }
           this.unclaim(st); st.state = 'idle'; st.anim = 'idle';
@@ -794,9 +832,9 @@ export class Sim {
         st.t = 0.6;
         const dz = deliveryZone(s);
         const targets = [
-          ...s.trash.map(t => ({ id: t.id, x: t.x, z: t.z })),
-          ...s.boxes.filter(b => b.empty && !b.carrier && !(b.x > dz.x0 && b.x < dz.x1 && b.z > dz.z0 && b.z < dz.z1)).map(b => ({ id: b.id, x: b.x, z: b.z })),
-        ].filter(t => !this.claims.has('clean:' + t.id)).sort((a, b) => dist(a, st) - dist(b, st));
+          ...s.trash.map(t => ({ id: t.id, x: t.x, z: t.z, fl: t.fl || 0 })),
+          ...s.boxes.filter(b => b.empty && !b.carrier && !((b.fl || 0) === 0 && b.x > dz.x0 && b.x < dz.x1 && b.z > dz.z0 && b.z < dz.z1)).map(b => ({ id: b.id, x: b.x, z: b.z, fl: b.fl || 0 })),
+        ].filter(t => !this.claims.has('clean:' + t.id)).sort((a, b) => distF(a, st) - distF(b, st));
         if (targets.length && this.claim(st, 'clean:' + targets[0].id)) { this.goTo(st, targets[0], 'going'); return; }
         this.wander(st);
         return;
@@ -805,14 +843,14 @@ export class Sim {
         if (st.state === 'repairing') {
           if (st.t > 0) { st.anim = 'work'; return; }
           const o = w.obj(st.task!.split(':')[1]);
-          if (o && o.broken) { o.broken = false; s.today.repaired++; w.bump(); w.ev.emit('sfx', { name: 'repair', x: o.x, z: o.z }); }
+          if (o && o.broken) { o.broken = false; s.today.repaired++; this.staffXp(st, 3); w.bump(); w.ev.emit('sfx', { name: 'repair', x: o.x, z: o.z }); }
           this.unclaim(st); st.state = 'idle';
           return;
         }
         if (st.state === 'going') { st.state = 'repairing'; st.t = 4 * quick; st.anim = 'work'; return; }
         if (st.t > 0) return;
         st.t = 0.8;
-        const broken = s.objects.filter(o => o.broken && !this.claims.has('fix:' + o.id)).sort((a, b) => dist(a, st) - dist(b, st));
+        const broken = s.objects.filter(o => o.broken && !this.claims.has('fix:' + o.id)).sort((a, b) => distF(a, st) - distF(b, st));
         if (broken.length && this.claim(st, 'fix:' + broken[0].id)) { this.goTo(st, useSpots(broken[0])[0] || broken[0], 'going'); return; }
         this.wander(st);
         return;
@@ -829,14 +867,14 @@ export class Sim {
           return;
         }
         const spot = counterSpots(k).cashier;
-        if (dist(st, spot) > 0.3) { if (!st.path.length) this.goTo(st, spot, 'going'); return; }
+        if (distF(st, spot) > 0.3) { if (!st.path.length) this.goTo(st, spot, 'going'); return; }
         st.ry = spot.ry; st.anim = 'idle';
         if (w.registerUser.get(k.id)) return; // a player is running this register
         const head = (w.queues.get(k.id) || []).map(id => w.cust(id)).find(c => c && (c.state === 'atCounter' || c.state === 'paying'));
         if (!head || st.t > 0) return;
         st.anim = 'work';
-        if (head.state === 'atCounter' && head.scanned < head.cart.length) { head.scanned++; st.t = 0.9 * (has(w, 'cashier') ? 0.5 : 1); w.bump(); w.ev.emit('sfx', { name: 'beep', x: k.x, z: k.z }); return; }
-        if (head.state === 'paying') { st.t = 1.2; this.completeCheckout(head, head.pay === 'cash' ? head.given - head.cart.reduce((a, b) => a + b.price, 0) : null); }
+        if (head.state === 'atCounter' && head.scanned < head.cart.length) { head.scanned++; st.t = 0.9 * (has(w, 'cashier') ? 0.5 : 1) * sk.work; w.bump(); w.ev.emit('sfx', { name: 'beep', x: k.x, z: k.z }); return; }
+        if (head.state === 'paying') { st.t = 1.2 * sk.work; this.completeCheckout(head, head.pay === 'cash' ? head.given - head.cart.reduce((a, b) => a + b.price, 0) : null); this.staffXp(st, 1); }
         return;
       }
       case 'cook': {
@@ -851,17 +889,17 @@ export class Sim {
           return;
         }
         const spot = foodSpots(k).cook;
-        if (dist(st, spot) > 0.3) { if (!st.path.length) this.goTo(st, spot, 'going'); return; }
+        if (distF(st, spot) > 0.3) { if (!st.path.length) this.goTo(st, spot, 'going'); return; }
         st.ry = spot.ry;
         const head = this.foodHead(k.id);
         if (st.task) {
           if (!head || 'cook:' + head.id !== st.task) { st.task = null; st.anim = 'idle'; return; }
           st.anim = 'work';
-          if (st.t <= 0) { st.task = null; st.anim = 'idle'; this.serveMeal(k.id); }
+          if (st.t <= 0) { st.task = null; st.anim = 'idle'; if (this.serveMeal(k.id)) this.staffXp(st, 1); }
           return;
         }
         st.anim = 'idle';
-        if (head && (k.stock || 0) > 0 && !w.registerUser.get(k.id)) { st.task = 'cook:' + head.id; st.t = MEAL[head.order!].secs * 1.4 * (has(w, 'mechanic') ? 0.7 : 1); st.anim = 'work'; }
+        if (head && (k.stock || 0) > 0 && !w.registerUser.get(k.id)) { st.task = 'cook:' + head.id; st.t = MEAL[head.order!].secs * 1.4 * (has(w, 'mechanic') ? 0.7 : 1) * sk.work; st.anim = 'work'; }
         return;
       }
       case 'restocker': {
@@ -871,13 +909,13 @@ export class Sim {
           if (st.t > 0) { st.anim = 'work'; return; }
           const def = ITEM[o.item];
           if (b.count > 0 && (o.stock || 0) < (def.capacity || 0) && (!o.product || o.product === b.item)) {
-            o.product = b.item; o.stock = (o.stock || 0) + 1; b.count--; st.t = 0.35; w.bump();
+            o.product = b.item; o.stock = (o.stock || 0) + 1; b.count--; st.t = 0.35 * sk.work; this.staffXp(st, 0.25); w.bump();
             if (b.count <= 0) { b.count = 0; b.empty = true; }
             return;
           }
           // done: bin the empty box or leave the partial one in the zone
           if (b.empty) {
-            const bin = s.objects.filter(x => ITEM[x.item]?.kind === 'bin').sort((a, c) => dist(a, st) - dist(c, st))[0];
+            const bin = s.objects.filter(x => ITEM[x.item]?.kind === 'bin').sort((a, c) => distF(a, st) - distF(c, st))[0];
             if (bin) { st.state = 'binning'; this.goTo(st, useSpots(bin)[0], 'binning'); st.state = 'binning'; return; }
             s.boxes.splice(s.boxes.indexOf(b), 1); st.carry = null; w.bump();
           } else this.dropCarry(st);
@@ -890,7 +928,7 @@ export class Sim {
           const b = w.box(bid), o = w.obj(oid);
           if (!b || b.carrier || !o) { this.unclaim(st); st.state = 'idle'; return; }
           b.carrier = st.id; st.carry = b.id; w.bump();
-          this.goTo(st, useSpots(o).sort((a, c) => dist(a, st) - dist(c, st))[0], 'toShelf');
+          this.goTo(st, useSpots(o).sort((a, c) => distF(a, st) - distF(c, st))[0], 'toShelf');
           return;
         }
         if (st.state === 'toShelf') { st.state = 'stocking'; st.t = 0.4; return; }
@@ -907,7 +945,7 @@ export class Sim {
           const b = free.find(b => (o.product ? b.item === o.product : ITEM[b.item].product!.place === accepts) && !this.claims.has('box:' + b.id));
           if (!b) continue;
           if (!o.stock) o.product = b.item;
-          if (this.claim(st, `stock:${o.id}:${b.id}`)) { this.claims.add('box:' + b.id); this.goTo(st, b, 'fetch'); return; }
+          if (this.claim(st, `stock:${o.id}:${b.id}`)) { this.claims.add('box:' + b.id); this.goTo(st, { x: b.x, z: b.z, fl: b.fl || 0 }, 'fetch'); return; }
         }
         this.wander(st);
         return;
@@ -916,14 +954,14 @@ export class Sim {
   }
   private dropCarry(st: StaffNpc) {
     const b = st.carry ? this.w.box(st.carry) : null;
-    if (b) { b.carrier = null; b.x = st.x; b.z = st.z; b.y = 0; this.claims.delete('box:' + b.id); }
+    if (b) { b.carrier = null; b.x = st.x; b.z = st.z; b.y = 0; b.fl = st.fl; this.claims.delete('box:' + b.id); }
     st.carry = null; this.w.bump();
   }
   private wander(st: StaffNpc) {
     if (st.path.length || chance(0.6)) return;
     const { w, d } = shopSize(this.w.save);
     const p = { x: rand(-w / 2 + 1, w / 2 - 1), z: rand(-d + 1, -1.2) };
-    st.path = this.w.nav.route({ x: st.x, z: st.z }, p); st.state = 'idle';
+    st.path = this.w.route({ x: st.x, z: st.z, fl: st.fl }, { ...p, fl: st.fl }); st.state = 'idle';
   }
 
   // ---------- day ----------

@@ -2,6 +2,7 @@
 import { EXPANSIONS, DELIVERY_ZONE } from '../config/economy';
 import { ITEM, FIXED, type ItemDef } from '../config/items';
 import type { PlacedObject, SaveData } from '../core/save';
+import { reservedZones } from './building';
 
 export const CELL = 0.5;
 export const DOOR = { x: 0, w: 1.8, inside: { x: 0, z: -0.8 }, outside: { x: 0, z: 1.2 } };
@@ -15,7 +16,7 @@ export function deliveryZone(s: { expansion: number }) {
 }
 
 export interface V2 { x: number; z: number }
-export interface Spot extends V2 { ry: number }
+export interface Spot extends V2 { ry: number; fl?: number }
 
 export function defSize(item: string): [number, number] {
   if (item === 'office') return FIXED.office.size;
@@ -48,18 +49,22 @@ export function snapCenter(item: string, x: number, z: number, rot: number) {
 const overlap = (a: any, b: any, m = 0.001) => a.x0 < b.x1 - m && a.x1 > b.x0 + m && a.z0 < b.z1 - m && a.z1 > b.z0 + m;
 
 /** can this item be placed here? returns null when fine, otherwise the reason */
-export function placeBlocked(s: SaveData, item: string, x: number, z: number, rot: number, ignoreId?: string): string | null {
+export function placeBlocked(s: SaveData, item: string, x: number, z: number, rot: number, ignoreId?: string, fl = 0): string | null {
   const def = ITEM[item];
   const f = footprint(item, x, z, rot);
   const { w, d } = shopSize(s);
   if (f.x0 < -w / 2 - 0.001 || f.x1 > w / 2 + 0.001 || f.z0 < -d - 0.001 || f.z1 > 0.001) return 'Must be inside the shop';
+  if (fl >= (s.floors || 1)) return 'Build that floor first';
+  for (const z of reservedZones(s, fl)) if (overlap(f, z.r)) return z.why;
   if (def?.walkable) return null;
-  const door = { x0: -1.2, x1: 1.2, z0: -1.6, z1: 0 };
-  if (overlap(f, door)) return 'Keep the doorway clear';
-  const dz = deliveryZone(s);
-  if (overlap(f, { x0: dz.x0, x1: dz.x1, z0: dz.z0, z1: dz.z1 })) return 'That’s the delivery zone';
+  if (fl === 0) {
+    const door = { x0: -1.2, x1: 1.2, z0: -1.6, z1: 0 };
+    if (overlap(f, door)) return 'Keep the doorway clear';
+    const dz = deliveryZone(s);
+    if (overlap(f, { x0: dz.x0, x1: dz.x1, z0: dz.z0, z1: dz.z1 })) return 'That’s the delivery zone';
+  }
   for (const o of s.objects) {
-    if (o.id === ignoreId || o.wall) continue;
+    if (o.id === ignoreId || o.wall || (o.fl || 0) !== fl) continue;
     const od = ITEM[o.item];
     if (od?.walkable) continue;
     if (overlap(f, footprint(o.item, o.x, o.z, o.rot))) return 'Something is in the way';
@@ -67,8 +72,9 @@ export function placeBlocked(s: SaveData, item: string, x: number, z: number, ro
   // the front of stations / shelves needs a free tile to use them
   for (const u of useSpots({ item, x, z, rot } as PlacedObject)) {
     if (u.x < -w / 2 || u.x > w / 2 || u.z < -d || u.z > 0) return 'Leave room in front to use it';
+    for (const zz of reservedZones(s, fl)) if (u.x > zz.r.x0 && u.x < zz.r.x1 && u.z > zz.r.z0 && u.z < zz.r.z1) return 'Leave room in front to use it';
     for (const o of s.objects) {
-      if (o.id === ignoreId || o.wall || ITEM[o.item]?.walkable) continue;
+      if (o.id === ignoreId || o.wall || ITEM[o.item]?.walkable || (o.fl || 0) !== fl) continue;
       const g = footprint(o.item, o.x, o.z, o.rot);
       if (u.x > g.x0 && u.x < g.x1 && u.z > g.z0 && u.z < g.z1) return 'Leave room in front to use it';
     }
@@ -81,7 +87,7 @@ export function useSpots(o: PlacedObject): Spot[] {
   const def: ItemDef | undefined = ITEM[o.item];
   const [, dc] = defSize(o.item);
   const front = (dc * CELL) / 2;
-  const mk = (lx: number, lz: number, lry = Math.PI): Spot => ({ ...toWorld(o, lx, lz), ry: worldRy(o, lry) });
+  const mk = (lx: number, lz: number, lry = Math.PI): Spot => ({ ...toWorld(o, lx, lz), ry: worldRy(o, lry), fl: o.fl || 0 });
   if (o.item === 'office') return [mk(0, front + 0.35)];
   if (!def) return [];
   switch (def.kind) {
@@ -97,6 +103,9 @@ export function useSpots(o: PlacedObject): Spot[] {
 
 /** seat transforms for stations (where the hips go), facing the screen */
 export function seats(o: PlacedObject): (Spot & { y: number })[] {
+  return seatsLocal(o).map(p => ({ ...p, fl: o.fl || 0 }));
+}
+function seatsLocal(o: PlacedObject): (Spot & { y: number })[] {
   const def = ITEM[o.item];
   if (!def || def.kind !== 'station') return [];
   const at = (lz: number, y = 0) => ({ ...toWorld(o, 0, lz), ry: worldRy(o, Math.PI), y });
@@ -118,8 +127,8 @@ export function foodSpots(o: PlacedObject) {
   const [, dc] = defSize(o.item);
   const front = (dc * CELL) / 2;
   return {
-    cook: { ...toWorld(o, 0, -front - 0.4), ry: worldRy(o, 0) },
-    queue: (i: number) => ({ ...toWorld(o, 0.35, front + 0.4 + i * 0.75), ry: worldRy(o, Math.PI) }),
+    cook: { ...toWorld(o, 0, -front - 0.4), ry: worldRy(o, 0), fl: o.fl || 0 },
+    queue: (i: number) => ({ ...toWorld(o, 0.35, front + 0.4 + i * 0.75), ry: worldRy(o, Math.PI), fl: o.fl || 0 }),
   };
 }
 
@@ -128,16 +137,16 @@ export function counterSpots(o: PlacedObject) {
   const [, dc] = defSize(o.item);
   const front = (dc * CELL) / 2;
   return {
-    cashier: { ...toWorld(o, 0, -front - 0.45), ry: worldRy(o, 0) },
-    queue: (i: number) => ({ ...toWorld(o, 0.2, front + 0.45 + i * 0.75), ry: worldRy(o, Math.PI) }),
+    cashier: { ...toWorld(o, 0, -front - 0.45), ry: worldRy(o, 0), fl: o.fl || 0 },
+    queue: (i: number) => ({ ...toWorld(o, 0.2, front + 0.45 + i * 0.75), ry: worldRy(o, Math.PI), fl: o.fl || 0 }),
     itemsAt: (i: number, n: number) => toWorld(o, -0.5 + (n <= 1 ? 0.5 : i / Math.max(1, n - 1)) * 0.9, front - 0.35),
     topY: 1.0,
   };
 }
 
-export function objectAt(s: SaveData, x: number, z: number): PlacedObject | null {
+export function objectAt(s: SaveData, x: number, z: number, fl = 0): PlacedObject | null {
   for (const o of s.objects) {
-    if (o.wall) continue;
+    if (o.wall || (o.fl || 0) !== fl) continue;
     const f = footprint(o.item, o.x, o.z, o.rot);
     if (x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1) return o;
   }

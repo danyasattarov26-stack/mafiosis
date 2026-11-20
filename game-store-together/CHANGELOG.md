@@ -2,6 +2,33 @@
 
 All notable changes to Game Store Together. Versions follow semver; the save format has its own `SAVE_VERSION`.
 
+## [1.3.0] — 2026-11-20
+
+### Floors & rebirth
+- Build up to **4 floors** (level 6, 8 and 10; the lot must be expanded once). Switchback stairs go in the back-left corner.
+- **Elevator** upgrade (level 8): customers reach high floors faster and like them more. In the elevator, E rides up, F rides down.
+- Customers, staff and boxes all work on every floor; you and your co-op friends can place things on any floor.
+- **Rebirth** once all floors are built: start over with +25% income, +15% XP and $500 more per rebirth, and build up to **7 floors**.
+  Regulars, achievements, styles, the shop name and lifetime stats are kept.
+- Every floor adds rent; a floor badge on the HUD shows where you are.
+
+### The office
+- The manager's laptop corner is now a **cozy office room**: desk with the manager PC, bookshelf, armchair, side table
+  with coffee and a radio, lamp, plant, rug, posters, a clock and a window onto the shop floor.
+- Old saves: anything standing where the room now is goes back to your inventory.
+
+### Staff skills
+- Staff gain skill levels (★1–5) as they work, or you can train them in the Staff tab: each level makes them faster on their feet
+  and quicker at the job, for a slightly higher wage.
+
+### Phone
+- Holding the phone sideways now gets a slim one-row top bar, smaller buttons and a joystick lower down.
+- Daily goals fold into one line on touch screens; tap it to see all three.
+
+### Also
+- 6 new achievements (floors, elevator, rebirth, a fully trained employee).
+- Save format v5.
+
 ## [1.2.0] — 2026-11-20
 
 ### New stations

@@ -160,7 +160,7 @@ export const isPlaceable = (d: ItemDef) => !!d.size || d.kind === 'wall';
 
 // Starting layout items (not sold): the office desk with the management laptop.
 export const FIXED = {
-  office: { id: 'office', name: 'Office Desk', size: [3, 2] as [number, number] },
+  office: { id: 'office', name: 'Manager’s Office', size: [7, 6] as [number, number] },
 };
 
 // Station component visuals per tier (default tier 0 = what the station ships with).

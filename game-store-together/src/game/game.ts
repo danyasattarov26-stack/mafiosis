@@ -12,8 +12,9 @@ import { input } from '../engine/input';
 import { audio } from '../engine/audio';
 import { World } from '../sim/world';
 import { Sim } from '../sim/sim';
-import { applyAction, inUse, placeHint, type Action, type Result } from '../sim/actions';
+import { applyAction, inUse, placeHint, returnObject, type Action, type Result } from '../sim/actions';
 import { counterSpots, useSpots, dist } from '../sim/layout';
+import { groundAt, floorY, elevator, reservedZones, clearReserved } from '../sim/building';
 import { View } from './view';
 import { Player } from './player';
 import { Placement } from './placement';
@@ -77,6 +78,9 @@ export class Game {
     this.world = new World(save);
     this.world.isHost = how !== 'guest';
     this.sim = how === 'solo' ? new Sim(this.world) : null;
+    // older saves: anything standing where the office room (or stairs/elevator) now is goes back to the inventory
+    const moved = how === 'solo' ? clearReserved(save, o => returnObject(this.world, o)) : 0;
+    if (moved) { this.world.bump(); setTimeout(() => this.hud.toast(`🏢 Your office is now a real room! ${moved} item${moved > 1 ? 's were' : ' was'} in the way and went to your inventory (Tab).`, 'info', 6000), 1500); }
     this.view.setWorld(this.world);
     this.view.localId = this.localId;
     this.wireEvents();
@@ -93,7 +97,7 @@ export class Game {
 
   private wireEvents() {
     const w = this.world;
-    w.ev.on('cash', e => { this.view.popup(e.x, e.z, `+${$m(e.amount)}${e.label ? ' ' + e.label : ''}`, e.label === 'tip' ? '#ffd166' : '#80ed99'); coop.broadcastEvent('cash', e); });
+    w.ev.on('cash', e => { this.view.popup(e.x, e.z, `+${$m(e.amount)}${e.label ? ' ' + e.label : ''}`, e.label === 'tip' ? '#ffd166' : '#80ed99', e.y || 0); coop.broadcastEvent('cash', e); });
     w.ev.on('sfx', e => { audio.play(e.name as any, { at: e, throttle: 60 }); coop.broadcastEvent('sfx', e); });
     w.ev.on('toast', e => { this.hud.toast(e.msg, e.kind || 'info'); coop.broadcastEvent('toast', e); });
     w.ev.on('review', r => { this.hud.toast(`${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)} “${r.text}” — ${r.who}`, r.stars >= 4 ? 'good' : r.stars <= 2 ? 'bad' : 'info', 4200); coop.broadcastEvent('review', r); });
@@ -105,7 +109,7 @@ export class Game {
 
   /** events relayed from the host to guests */
   onRemoteEvent(type: string, d: any) {
-    if (type === 'cash') this.view.popup(d.x, d.z, `+${$m(d.amount)}${d.label ? ' ' + d.label : ''}`, d.label === 'tip' ? '#ffd166' : '#80ed99');
+    if (type === 'cash') this.view.popup(d.x, d.z, `+${$m(d.amount)}${d.label ? ' ' + d.label : ''}`, d.label === 'tip' ? '#ffd166' : '#80ed99', d.y || 0);
     if (type === 'sfx') audio.play(d.name, { at: d, throttle: 60 });
     if (type === 'toast') this.hud.toast(d.msg, d.kind || 'info');
     if (type === 'review') this.hud.toast(`${'★'.repeat(d.stars)} “${d.text}”`, d.stars >= 4 ? 'good' : 'info', 4000);
@@ -146,7 +150,7 @@ export class Game {
     const frozen = this.mode === 'ui' || this.mode === 'register';
     // phones never lock a mouse pointer: only desktop waits for pointer lock
     this.player.frozen = frozen || (!input.locked && !input.touch);
-    if (this.mode !== 'register') this.player.update(dt, this.view.colliders);
+    if (this.mode !== 'register') this.player.update(dt, this.view.colliders, this.ground);
     this.gfx.setTime(w.save.time);
     this.gfx.follow(this.player.pos);
     audio.listener.x = this.player.pos.x; audio.listener.z = this.player.pos.z;
@@ -179,7 +183,7 @@ export class Game {
     }
     this.beatT -= dt;
     if (this.beatT <= 0) { this.beatT = 30; this.heartbeat(); }
-    this.hud.update(w.save, this.sim ? this.sim.rating() : avgRating(w.save), coop.peers.length ? coop.peers.map(p => ({ name: p.name, host: p.host })) : []);
+    this.hud.update(w.save, this.sim ? this.sim.rating() : avgRating(w.save), coop.peers.length ? coop.peers.map(p => ({ name: p.name, host: p.host })) : [], this.player.floor);
     this.updateHint();
   }
 
@@ -220,6 +224,7 @@ export class Game {
       while (o && !o.userData.target) o = o.parent;
       if (o && o.userData.target) {
         const t = o.userData.target;
+        if (t.kind === 'block') return null;       // walls you can't use things through
         if (t.kind === 'visit' && h.distance > 4) continue;
         return { kind: t.kind, id: t.id, name: t.name, obj: o };
       }
@@ -233,7 +238,14 @@ export class Game {
     const o: Opt[] = [];
     switch (t.kind) {
       case 'sign': o.push({ key: 'E', text: s.open ? 'Close the shop' : s.dayOver ? 'Day is over' : 'Open the shop', run: () => this.act({ t: 'toggleOpen' }).then(r => { if (r.ok) audio.play('door'); }) }); break;
-      case 'laptop': o.push({ key: 'E', text: 'Use manager laptop', run: () => this.ui.openLaptop() }); break;
+      case 'laptop': o.push({ key: 'E', text: 'Use the manager PC', run: () => this.ui.openLaptop() }); break;
+      case 'elevator': {
+        const fl = Number(t.id), n = s.floors || 1;
+        o.push({ key: '', text: `🛗 Elevator · floor ${fl + 1} of ${n}` });
+        if (fl < n - 1) o.push({ key: 'E', text: `Ride up to floor ${fl + 2}`, run: () => this.rideElevator(fl + 1) });
+        if (fl > 0) o.push({ key: 'F', text: `Ride down to floor ${fl}`, run: () => this.rideElevator(fl - 1) });
+        break;
+      }
       case 'visit': o.push({ key: 'E', text: `Visit ${t.name}'s shop`, run: () => this.ui.visit(t.id, t.name || 'Friend') }); break;
       case 'trash': o.push({ key: 'Hold E', text: 'Clean up', hold: 1.2 * quick, run: () => this.act({ t: 'clean', id: t.id }, true).then(r => r.ok && audio.play('sweep')) }); break;
       case 'scan': o.push({ key: 'E', text: 'Scan item', run: () => this.act({ t: 'scan', cust: t.id }, true).then(r => r.ok && audio.play('beep')) }); break;
@@ -276,7 +288,7 @@ export class Game {
           const head = w.customers.find(c => c.queueAt === ob.id && c.state === 'foodWait' && c.order);
           const meal = head?.order ? MEAL[head.order] : null;
           o.push({ key: '', text: `Snack Bar · 🍕 ${ob.stock || 0}/${d.capacity} meals${(w.queues.get(ob.id)?.length || 0) > 1 ? ` · ${w.queues.get(ob.id)!.length} in line` : ''}` });
-          if (meal && !(ob.stock || 0)) o.push({ key: '', text: 'Out of food — order Food Supplies on the laptop', warn: true });
+          if (meal && !(ob.stock || 0)) o.push({ key: '', text: 'Out of food: order Food Supplies on the manager PC', warn: true });
           else if (meal) o.push({ key: 'Hold E', text: `Make ${meal.emoji} ${meal.name}`, hold: meal.secs * quick, run: () => this.act({ t: 'cook', obj: ob.id }).then(r => { if (r.ok) audio.play('ding'); else if (r.msg) this.hud.toast(r.msg, 'bad'); }) });
           else o.push({ key: '', text: (ob.stock || 0) ? 'No orders right now' : 'Empty — bring a Food Supplies box' });
           const busy = inUse(w, ob.id);
@@ -351,10 +363,38 @@ export class Game {
 
   private dropCarried() {
     const cb = this.carried(); if (!cb) return;
-    const hit = this.player.floorHit(2.6);
-    const p = hit && !this.view.colliders.some(c => hit.x > c.x0 && hit.x < c.x1 && hit.z > c.z0 && hit.z < c.z1 && c.y1 !== undefined)
+    const fl = this.player.floor, fy = floorY(fl);
+    const hit = this.player.floorHit(2.6, fy);
+    const p = hit && !this.view.colliders.some(c => hit.x > c.x0 && hit.x < c.x1 && hit.z > c.z0 && hit.z < c.z1 && c.y1 !== undefined && (c.y0 ?? 0) <= fy + 0.5 && c.y1 > fy)
       ? hit : this.player.pos.clone().add(this.player.forward().multiplyScalar(0.7));
-    this.act({ t: 'dropBox', id: cb.id, x: p.x, z: p.z, ry: this.player.yaw }, true).then(r => r.ok && audio.play('thud', { vol: 0.6 }));
+    if (reservedZones(this.world.save, fl).some(z => p.x > z.r.x0 - 0.2 && p.x < z.r.x1 + 0.2 && p.z > z.r.z0 - 0.2 && p.z < z.r.z1 + 0.2)) { this.hud.toast('Don’t leave boxes on the stairs or by the elevator', 'bad'); return; }
+    this.act({ t: 'dropBox', id: cb.id, x: p.x, z: p.z, ry: this.player.yaw, fl }, true).then(r => r.ok && audio.play('thud', { vol: 0.6 }));
+  }
+
+  /** what you'd stand on at (x, z) with your feet at y: floors and stairs */
+  ground = (x: number, z: number, y: number) => groundAt(this.world.save, x, z, y);
+
+  /** back to the front door of the fresh little shop */
+  afterRebirth() {
+    this.placement.stop(); this.mode = 'walk'; this.holding = null;
+    this.player.pos.set(0, 0, -1.2); this.player.yaw = Math.PI; this.player.vy = 0;
+  }
+
+  /** step into the elevator, the doors close, and out you come on another floor */
+  private rideElevator(to: number) {
+    const el = elevator(this.world.save); if (!el) return;
+    audio.play('ding');
+    const fade = document.createElement('div');
+    fade.style.cssText = 'position:fixed;inset:0;background:#120b22;opacity:0;transition:opacity .25s;z-index:30;pointer-events:none';
+    document.body.appendChild(fade);
+    requestAnimationFrame(() => { fade.style.opacity = '1'; });
+    setTimeout(() => {
+      this.player.pos.set(el.entry.x, floorY(to), el.entry.z + 0.15);
+      this.player.yaw = 0; this.player.vy = 0;
+      this.hud.toast(`🛗 Floor ${to + 1}`, 'info', 1400);
+      fade.style.opacity = '0';
+      setTimeout(() => { fade.remove(); audio.play('ding'); }, 300);
+    }, 420);
   }
 
   // ---------- placement ----------
@@ -391,8 +431,8 @@ export class Game {
     if (input.pressed('interact')) {
       if (!p.valid) { audio.play('error'); return; }
       const a: Action = p.moving
-        ? { t: 'moveObj', id: p.moving, x: p.pos.x, z: p.pos.z, rot: p.rot, y: p.pos.wall ? p.pos.y : undefined }
-        : { t: 'place', item: p.item, x: p.pos.x, z: p.pos.z, rot: p.rot, wall: p.pos.wall, y: p.pos.wall ? p.pos.y : undefined };
+        ? { t: 'moveObj', id: p.moving, x: p.pos.x, z: p.pos.z, rot: p.rot, y: p.pos.wall ? p.pos.y : undefined, fl: p.pos.fl }
+        : { t: 'place', item: p.item, x: p.pos.x, z: p.pos.z, rot: p.rot, wall: p.pos.wall, y: p.pos.wall ? p.pos.y : undefined, fl: p.pos.fl };
       const item = p.item, moving = p.moving;
       this.act(a, true).then(r => {
         if (!r.ok) { this.hud.toast(r.msg || 'Can’t place', 'bad'); audio.play('error'); return; }
@@ -410,7 +450,7 @@ export class Game {
       if (!r.ok) { this.hud.toast(r.msg || 'Busy', 'bad'); return; }
       this.registerId = counterId; this.mode = 'register';
       const cs = counterSpots(k);
-      this.player.pos.set(cs.cashier.x, 0, cs.cashier.z);
+      this.player.pos.set(cs.cashier.x, floorY(k.fl || 0), cs.cashier.z);
       this.player.yaw = cs.cashier.ry + Math.PI; this.player.pitch = -0.55;
       this.player.update(0, []);
       input.unlock();
@@ -466,8 +506,8 @@ export class Game {
     else if (Object.keys(s.inventory).length && s.day <= 3) h = `Press <b>Tab</b> to open your inventory and place items.`;
     else if (s.trash.length >= 3) h = `It’s getting messy — <b>hold E</b> on trash and spills, or hire a <b>Cleaner</b>.`;
     else if (s.boxes.some(b => b.product && !b.at && !b.carrier && !b.empty) && !this.carried() && s.day <= 4) h = `Stock arrived: pick up a box with <b>E</b>, carry it to a shelf or fridge and <b>hold E</b> to fill it.`;
-    else if (s.day === 1 && s.open && s.money >= 160) h = `Nice! Use the <b>manager laptop</b> in the back corner to buy more stations.`;
-    else if (s.day <= 2 && s.level >= 2 && !s.licenses.length) h = `Level 2! Buy a <b>Retail License</b> on the laptop to start selling snacks.`;
+    else if (s.day === 1 && s.open && s.money >= 160) h = `Nice! Use the <b>manager PC</b> in your office (back-right room) to buy more stations.`;
+    else if (s.day <= 2 && s.level >= 2 && !s.licenses.length) h = `Level 2! Buy a <b>Retail License</b> on the manager PC to start selling snacks.`;
     if (this.mode === 'install') h = `Holding <b>${ITEM[this.holding!]?.name}</b> — look at a gaming station and press <b>E</b>. <b>Q</b> to stop.`;
     this.hud.hint(h);
   }

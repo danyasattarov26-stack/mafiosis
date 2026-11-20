@@ -3,8 +3,10 @@
   guests send them to the host, which validates and applies them, so the host's world stays the truth.
 */
 import { ITEM, type ItemDef } from '../config/items';
-import { ECON, EXPANSIONS, FLOORS, WALLS, LIGHTS, LICENSES, STAFF, STAFF_NAMES, MAX_STAFF_PER_ROLE, XP, PERKS } from '../config/economy';
-import { officeSpot } from '../core/save';
+import { ECON, EXPANSIONS, FLOORS, WALLS, LIGHTS, LICENSES, STAFF, STAFF_NAMES, MAX_STAFF_PER_ROLE, XP, PERKS, ELEVATOR, REBIRTH, STAFF_SKILL } from '../config/economy';
+import { officeSpot, newSave, emptyDay, type PlacedObject } from '../core/save';
+import { rollGoals } from '../config/goals';
+import { clearReserved, nextStorey, maxFloors, floorOfY } from './building';
 import { uid, pick, rand, clamp } from '../core/util';
 import { placeBlocked, deliveryZone, shopSize, dist, footprint } from './layout';
 import type { World } from './world';
@@ -12,14 +14,14 @@ import type { Sim } from './sim';
 
 export type Action =
   | { t: 'buy'; item: string; qty?: number }
-  | { t: 'place'; item: string; x: number; z: number; rot: number; wall?: boolean; y?: number }
+  | { t: 'place'; item: string; x: number; z: number; rot: number; wall?: boolean; y?: number; fl?: number }
   | { t: 'pickupObj'; id: string }
-  | { t: 'moveObj'; id: string; x: number; z: number; rot: number; y?: number }
+  | { t: 'moveObj'; id: string; x: number; z: number; rot: number; y?: number; fl?: number }
   | { t: 'sell'; id: string }
   | { t: 'sellInv'; item: string }
   | { t: 'install'; id: string; item: string }
   | { t: 'grabBox'; id: string }
-  | { t: 'dropBox'; id: string; x: number; z: number; ry: number }
+  | { t: 'dropBox'; id: string; x: number; z: number; ry: number; fl?: number }
   | { t: 'unbox'; id: string }
   | { t: 'stock'; box: string; obj: string }
   | { t: 'unstock'; obj: string }
@@ -42,6 +44,10 @@ export type Action =
   | { t: 'perk'; id: string }
   | { t: 'catch'; cust: string }
   | { t: 'cook'; obj: string }
+  | { t: 'train'; id: string }
+  | { t: 'buildFloor' }
+  | { t: 'buyElevator' }
+  | { t: 'rebirth' }
   | { t: 'nextDay' }
   | { t: 'cheat'; what: string; n?: number };
 
@@ -103,11 +109,13 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       if (d.kind === 'wall') {
         if (!a.wall) return no('Hang it on a wall');
       } else {
-        const why = placeBlocked(s, a.item, a.x, a.z, a.rot); if (why) return no(why);
+        const why = placeBlocked(s, a.item, a.x, a.z, a.rot, undefined, a.fl || 0); if (why) return no(why);
       }
       s.inventory[a.item]--; if (!s.inventory[a.item]) delete s.inventory[a.item];
       const o: any = { id: uid('o'), item: a.item, x: a.x, z: a.z, rot: a.rot & 3 };
       if (a.wall) { o.wall = true; o.y = a.y ?? 1.8; }
+      const fl = a.wall ? floorOfY(o.y) : a.fl || 0;
+      if (fl > 0) o.fl = fl;
       if (d.kind === 'station') { o.mon = 0; o.chair = 0; o.desk = 0; o.sessions = 0; }
       if (d.kind === 'shelf' || d.kind === 'fridge' || d.kind === 'foodbar') { o.product = null; o.stock = 0; }
       s.objects.push(o);
@@ -117,8 +125,10 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
     case 'moveObj': {
       const o = w.obj(a.id); if (!o || o.item === 'office') return no('Can’t move that');
       if (inUse(w, o.id)) return no('Someone is using it');
-      if (!o.wall) { const why = placeBlocked(s, o.item, a.x, a.z, a.rot, o.id); if (why) return no(why); }
+      if (!o.wall) { const why = placeBlocked(s, o.item, a.x, a.z, a.rot, o.id, a.fl || 0); if (why) return no(why); }
       o.x = a.x; o.z = a.z; o.rot = a.rot & 3; if (o.wall && a.y != null) o.y = a.y;
+      const fl = o.wall ? floorOfY(o.y ?? 1.8) : a.fl || 0;
+      if (fl > 0) o.fl = fl; else delete o.fl;
       w.bump();
       return ok();
     }
@@ -126,9 +136,7 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       const o = w.obj(a.id); if (!o || o.item === 'office') return no('Can’t pick that up');
       if (inUse(w, o.id)) return no('Someone is using it');
       s.objects.splice(s.objects.indexOf(o), 1);
-      s.inventory[o.item] = (s.inventory[o.item] || 0) + 1;
-      returnComponents(w, o);
-      returnStock(w, o);
+      returnObject(w, o);
       w.bump();
       return ok(`${ITEM[o.item].name} → inventory`);
     }
@@ -181,6 +189,7 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
     case 'dropBox': {
       const b = w.box(a.id); if (!b || b.carrier !== by) return no('Not carrying that');
       b.carrier = null; b.x = a.x; b.z = a.z; b.ry = a.ry;
+      if (a.fl) b.fl = a.fl; else delete b.fl;
       b.y = stackHeight(w, b);
       w.bump();
       return ok();
@@ -279,6 +288,15 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       w.bump();
       return ok(`Hired a ${r.name.toLowerCase()} ($${r.wage}/day)`);
     }
+    case 'train': {
+      const m = s.staff.find(x => x.id === a.id); if (!m) return no('Not on staff');
+      const lvl = m.lvl || 1;
+      if (lvl >= STAFF_SKILL.max) return no(`${m.name} is already a pro`);
+      const cost = STAFF_SKILL.train(lvl);
+      if (s.money < cost) return no('Not enough money');
+      s.money -= cost; s.today.spentItems += cost; m.lvl = lvl + 1; m.xp = 0; w.bump();
+      return ok(`🎓 ${m.name} finished training: skill level ${m.lvl}!`);
+    }
     case 'fire': {
       const i = s.staff.findIndex(x => x.id === a.id); if (i < 0) return no('Not on staff');
       s.staff.splice(i, 1); w.bump();
@@ -292,9 +310,48 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       s.expansion++;
       const off = s.objects.find(o => o.item === 'office');
       if (off) { const p = officeSpot(s.expansion); off.x = p.x; off.z = p.z; }
+      const moved = clearReserved(s, o => returnObject(w, o));
       w.bump();
       const { w: ww, d } = shopSize(s);
-      return ok(`🏗️ Shop expanded to ${ww}×${d} m!`);
+      return ok(`🏗️ Shop expanded to ${ww}×${d} m!${moved ? ` ${moved} item${moved > 1 ? 's were' : ' was'} in the way and went to your inventory.` : ''}`);
+    }
+    case 'buildFloor': {
+      const nx = nextStorey(s);
+      if (!nx) return no('Your shop is as tall as it gets');
+      if (nx.n > maxFloors(s)) return no('Rebirth to build higher than 4 floors');
+      if (s.expansion < 1) return no('Expand the lot once first (room for the stairs)');
+      if (nx.level > s.level) return no(`Reach level ${nx.level}`);
+      if (s.money < nx.price) return no('Not enough money');
+      s.money -= nx.price; s.today.spentItems += nx.price; s.floors = nx.n;
+      const moved = clearReserved(s, o => returnObject(w, o));
+      w.bump();
+      return ok(`🏗️ Floor ${nx.n} is built! Take the stairs in the back-left corner.${moved ? ` ${moved} item${moved > 1 ? 's' : ''} moved to your inventory to make room.` : ''}`);
+    }
+    case 'buyElevator': {
+      if (s.elevator) return no('You already have an elevator');
+      if ((s.floors || 1) < 2) return no('Build a second floor first');
+      if (ELEVATOR.level > s.level) return no(`Reach level ${ELEVATOR.level}`);
+      if (s.money < ELEVATOR.price) return no('Not enough money');
+      s.money -= ELEVATOR.price; s.today.spentItems += ELEVATOR.price; s.elevator = true;
+      const moved = clearReserved(s, o => returnObject(w, o));
+      w.bump();
+      return ok(`🛗 Elevator installed next to the stairs!${moved ? ` ${moved} item${moved > 1 ? 's' : ''} moved to your inventory.` : ''}`);
+    }
+    case 'rebirth': {
+      const max = maxFloors(s);
+      if ((s.floors || 1) < max) return no(`Build all ${max} floors first`);
+      const keep = {
+        id: s.id, createdAt: s.createdAt, shopName: s.shopName, day: s.day, rebirths: (s.rebirths || 0) + 1,
+        regulars: s.regulars, achievements: s.achievements, ownedStyles: s.ownedStyles, floor: s.floor, wall: s.wall, light: s.light,
+        lifetime: s.lifetime, reviews: s.reviews.slice(-10), tutorial: 99,
+      };
+      Object.assign(s, newSave(s.shopName), keep);
+      s.money = ECON.startMoney + REBIRTH.startMoney * s.rebirths;
+      s.today = emptyDay(); s.goals = rollGoals(s);
+      if (sim) for (const c of [...w.customers]) sim.leave(c, null);
+      w.customers.length = 0; w.seatUse.clear(); w.queues.clear(); w.registerUser.clear();
+      w.bump();
+      return ok(`💎 Rebirth #${s.rebirths}! Income +${Math.round(REBIRTH.income * 100 * s.rebirths)}% and XP +${Math.round(REBIRTH.xp * 100 * s.rebirths)}% forever, and you can now build up to 7 floors.`);
     }
     case 'style': {
       const list = a.kind === 'floor' ? FLOORS : a.kind === 'wall' ? WALLS : LIGHTS;
@@ -352,6 +409,7 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       if (a.what === 'break') { const st = s.objects.filter(o => ITEM[o.item]?.kind === 'station'); if (st.length) pick(st).broken = true; }
       if (a.what === 'endday') { s.time = ECON.dayEnd; s.open = false; for (const c of [...w.customers]) sim?.leave(c, null); w.customers.length = 0; sim?.finishDay(); }
       if (a.what === 'licenses') { s.licenses = LICENSES.map(l => l.id); }
+      if (a.what === 'floors') { s.floors = Math.min(7, Math.max(1, a.n || 4)); clearReserved(s, o => returnObject(w, o)); }
       w.bump();
       return ok('cheat: ' + a.what);
     }
@@ -369,6 +427,12 @@ export function inUse(w: World, id: string) {
 function componentId(slot: string, tier: number) {
   return { mon: ['', 'mon_2', 'mon_3', 'mon_4'], chair: ['', 'ch_2', 'ch_3', 'ch_4'], desk: ['', 'dk_2', 'dk_3'] }[slot]?.[tier] || null;
 }
+/** an object leaving the floor: the item, its upgrades and its stock go back to you */
+export function returnObject(w: World, o: PlacedObject) {
+  w.save.inventory[o.item] = (w.save.inventory[o.item] || 0) + 1;
+  returnComponents(w, o);
+  returnStock(w, o);
+}
 function returnComponents(w: World, o: any) {
   for (const slot of ['mon', 'chair', 'desk']) if (o[slot] > 0) { const id = componentId(slot, o[slot]); if (id) w.save.inventory[id] = (w.save.inventory[id] || 0) + 1; }
 }
@@ -379,7 +443,8 @@ function returnStock(w: World, o: any) {
 }
 function stackHeight(w: World, b: { id: string; x: number; z: number }) {
   let y = 0;
-  for (const o of w.save.boxes) if (o.id !== b.id && !o.carrier && Math.abs(o.x - b.x) < 0.42 && Math.abs(o.z - b.z) < 0.42) y = Math.max(y, (o.y || 0) + 0.56);
+  const fl = (b as any).fl || 0;
+  for (const o of w.save.boxes) if (o.id !== b.id && !o.carrier && (o.fl || 0) === fl && Math.abs(o.x - b.x) < 0.42 && Math.abs(o.z - b.z) < 0.42) y = Math.max(y, (o.y || 0) + 0.56);
   return Math.min(y, 1.7);
 }
 export { footprint };
