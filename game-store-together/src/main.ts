@@ -190,6 +190,8 @@ async function boot() {
     // touch controls only while actually walking around (never on top of panels)
     const wantTouch = input.touch && game.running && !paused && (game.mode === 'walk' || game.mode === 'place' || game.mode === 'install') && !document.querySelector('.overlay');
     if (wantTouch !== touchShown) { touchShown = wantTouch; input.showTouch(wantTouch); }
+    // self-heal: walking around with no panel open always has input enabled
+    if (game.running && !paused && (game.mode === 'walk' || game.mode === 'place' || game.mode === 'install') && !document.querySelector('.overlay, .laptop, .inv') && !input.enabled) input.enabled = true;
     // keep the click-to-play prompt honest
     ctp.hidden = !(game.running && !paused && !input.touch && !input.locked && (game.mode === 'walk' || game.mode === 'place' || game.mode === 'install'));
     gfx.render();

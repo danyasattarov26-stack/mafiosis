@@ -17,7 +17,7 @@
   --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1033; font-family: var(--font); color: var(--ink); -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; touch-action: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; width: 100%; background: #1a1033; font-family: var(--font); color: var(--ink); -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; touch-action: none; }
 canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
 #ui > * { pointer-events: auto; }
@@ -193,7 +193,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 /* ---------- touch controls ---------- */
 .touch { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
 .touch > *, .touch button { pointer-events: auto; }
-.joy { position: absolute; left: 30px; bottom: 40px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); pointer-events: none !important; opacity: .55; }
+.joy { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: calc(120px + env(safe-area-inset-bottom)); width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); pointer-events: none !important; opacity: .55; }
 .joy.on { opacity: 1; }
 .joy-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,248,231,.85); }
 .tbtns { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 58px); gap: 8px; }
@@ -219,7 +219,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .pill { font-size: 13px; padding: 3px 8px; border-radius: 10px; gap: 5px; }
   .pill .xp { width: 34px; height: 6px; }
   .hud-right .pill { font-size: 12px; }
-  .hint { max-width: 58vw; font-size: 11.5px; bottom: 200px; padding: 7px 10px; line-height: 1.3; }
+  .hint { max-width: 58vw; font-size: 11.5px; bottom: calc(255px + env(safe-area-inset-bottom)); padding: 7px 10px; line-height: 1.3; }
   .prompt div { font-size: 13px; }
   .toasts { top: 84px; }
   .toast { font-size: 13px; padding: 6px 10px; }

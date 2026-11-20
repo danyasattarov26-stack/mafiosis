@@ -129,35 +129,50 @@ class Input {
     document.body.appendChild(root);
     this.touchRoot = root;
     const area = this.canvas;
+    // Touches that begin on the game itself (not on a button or panel) belong to us: claim them right away
+    // (preventDefault on touchstart) so iOS Safari never turns a joystick drag into a page scroll, toolbar
+    // swipe or zoom and cancels it. Moves and ends are followed on the window so a finger is never "lost".
+    const onGame = (e: TouchEvent) => e.target === area;
     const start = (e: TouchEvent) => {
+      if (!onGame(e)) return;
+      e.preventDefault();
       for (const t of Array.from(e.changedTouches)) {
-        if (t.clientX < innerWidth * 0.42 && this.joy.id < 0) {
+        if (t.clientX < innerWidth * 0.45 && this.joy.id < 0) {
           this.joy.id = t.identifier; this.joy.x0 = t.clientX; this.joy.y0 = t.clientY; this.joy.x = 0; this.joy.y = 0;
-          joy.style.left = t.clientX - 60 + 'px'; joy.style.top = t.clientY - 60 + 'px'; joy.classList.add('on');
+          joy.style.left = t.clientX - 60 + 'px'; joy.style.top = t.clientY - 60 + 'px'; joy.style.bottom = 'auto'; joy.classList.add('on');
         } else if (this.lookTouch.id < 0) { this.lookTouch.id = t.identifier; this.lookTouch.x = t.clientX; this.lookTouch.y = t.clientY; }
       }
     };
     const moveT = (e: TouchEvent) => {
-      e.preventDefault();
+      let mine = false;
       for (const t of Array.from(e.changedTouches)) {
         if (t.identifier === this.joy.id) {
+          mine = true;
           let dx = (t.clientX - this.joy.x0) / 55, dy = (t.clientY - this.joy.y0) / 55; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
           this.joy.x = dx; this.joy.y = dy; knob.style.transform = `translate(${dx * 40}px, ${dy * 40}px)`;
         } else if (t.identifier === this.lookTouch.id) {
+          mine = true;
           this.lookX += (t.clientX - this.lookTouch.x) * 2.2; this.lookY += (t.clientY - this.lookTouch.y) * 2.2;
           this.lookTouch.x = t.clientX; this.lookTouch.y = t.clientY;
         }
       }
+      if (mine && e.cancelable) e.preventDefault();
     };
+    const resetJoy = () => { this.joy.id = -1; this.joy.x = this.joy.y = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.style.top = ''; joy.style.left = ''; joy.style.bottom = ''; };
     const end = (e: TouchEvent) => {
       for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === this.joy.id) { this.joy.id = -1; this.joy.x = this.joy.y = 0; knob.style.transform = ''; joy.classList.remove('on'); }
+        if (t.identifier === this.joy.id) resetJoy();
         if (t.identifier === this.lookTouch.id) this.lookTouch.id = -1;
       }
+      // if the browser lost track of a finger, drop it
+      if (e.touches.length === 0) { if (this.joy.id >= 0) resetJoy(); this.lookTouch.id = -1; }
     };
-    area.addEventListener('touchstart', start, { passive: true });
-    area.addEventListener('touchmove', moveT, { passive: false });
-    area.addEventListener('touchend', end); area.addEventListener('touchcancel', end);
+    area.addEventListener('touchstart', start, { passive: false });
+    addEventListener('touchmove', moveT, { passive: false });
+    addEventListener('touchend', end, { passive: true }); addEventListener('touchcancel', end, { passive: true });
+    // no double-tap zoom / pinch on the game
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('dblclick', e => e.preventDefault());
     root.style.display = 'none';
   }
 }
