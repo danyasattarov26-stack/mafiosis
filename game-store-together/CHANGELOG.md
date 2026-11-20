@@ -2,6 +2,13 @@
 
 All notable changes to Game Store Together. Versions follow semver; the save format has its own `SAVE_VERSION`.
 
+## [1.1.0] — 2026-11-20
+
+### Online without Supabase
+- Accounts, friends and cloud saves can now live in a **Vercel Blob** store (used on the live site).
+- Co-op, friends' online status and invites go **peer-to-peer** (WebRTC via Trystero) when Supabase Realtime isn't set up.
+- Joining keeps knocking until the host's connection opens; cloud saves every 5 minutes (plus end of day and on leaving).
+
 ## [1.0.0] — 2026-11-19
 
 First playable release.

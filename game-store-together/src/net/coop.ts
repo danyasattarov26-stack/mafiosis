@@ -7,6 +7,7 @@ import type { World, Customer, StaffNpc, PlayerPos } from '../sim/world';
 import { migrate } from '../core/save';
 import { api, type Look } from './api';
 import { uid } from '../core/util';
+import { P2PTransport } from './p2p';
 
 export const MAX_PLAYERS = 4;
 type Msg = { k: string; from: string; to?: string; [x: string]: any };
@@ -115,8 +116,18 @@ export class Coop {
   get id() { return this.me.id; }
   get connected() { return this.role !== 'solo'; }
 
-  private transport(room: string) {
-    return api.realtime ? new SupaTransport(room, this.me, api.realtime) : new LocalTransport(room, this.me);
+  /** Supabase Realtime when configured; otherwise peer-to-peer (WebRTC). `?local` (and dev builds) use tabs of this browser. */
+  get transportKind(): 'supabase' | 'p2p' | 'local' {
+    const q = new URLSearchParams(location.search);
+    if (api.realtime) return 'supabase';
+    if (q.has('local') || (import.meta.env.DEV && !q.has('p2p'))) return 'local';
+    return 'p2p';
+  }
+  private transport(room: string): Transport {
+    const k = this.transportKind;
+    if (k === 'supabase') return new SupaTransport(room, this.me, api.realtime!);
+    if (k === 'p2p') return new P2PTransport(room, this.me) as unknown as Transport;
+    return new LocalTransport(room, this.me);
   }
 
   /** open your shop so friends can join (live visits) */
@@ -140,17 +151,22 @@ export class Coop {
     t.onMsg(m => this.handle(m));
     t.onPeers(p => this.setPeers(p));
     try { await t.ready; } catch (e: any) { await this.leave(); return { ok: false, why: e.message || 'Could not connect' }; }
+    // peer-to-peer connections take a few seconds to open, so keep knocking until the host answers
+    let knock: any = null;
     const ok = await new Promise<boolean>(res => {
       this.gotSnap = res;
-      t.send({ k: 'join', from: this.me.id, name: this.me.name, look: this.me.look });
-      setTimeout(() => res(false), 12000);
+      const send = () => t.send({ k: 'join', from: this.me.id, name: this.me.name, look: this.me.look });
+      send(); knock = setInterval(send, 1500);
+      setTimeout(() => res(false), this.transportKind === 'p2p' ? 25000 : 12000);
     });
+    clearInterval(knock);
     this.gotSnap = null;
     if (!ok) { const why = this.full ? 'That shop is full (4 players max).' : 'Couldn’t reach that shop. Is your friend online and playing?'; await this.leave(); return { ok: false, why }; }
     return { ok: true };
   }
   private full = false;
   private hostMissing = 0;
+  private welcomed = new Set<string>();
   private lastHostMsg = 0;
   private ended = false;
 
@@ -197,7 +213,7 @@ export class Coop {
         if (this.role !== 'host') return;
         if (this.peers.filter(p => p.id !== this.me.id).length >= MAX_PLAYERS) { this.send({ k: 'full', to: m.from }); return; }
         this.lastRev = -1; this.snapT = 0;
-        this.onEvent({ type: 'toast', data: { msg: `👋 ${m.name} joined your shop!`, kind: 'good' } });
+        if (!this.welcomed.has(m.from)) { this.welcomed.add(m.from); this.onEvent({ type: 'toast', data: { msg: `👋 ${m.name} joined your shop!`, kind: 'good' } }); }
         break;
       case 'full': if (this.role === 'guest') { this.full = true; this.gotSnap?.(false); } break;
       case 'bye':

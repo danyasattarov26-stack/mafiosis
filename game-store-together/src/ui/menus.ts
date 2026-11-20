@@ -78,10 +78,10 @@ export class Menus {
     const m = modal([el('h2', {}, '🤝 Join a friend'), el('label', { class: 'muted', for: 'join-code' }, 'Friend code'), code,
       el('div', { class: 'row', style: { margin: '10px 0' } }, el('button', { class: 'btn coral', onclick: () => go(code.value.replace(/[^a-z0-9]/gi, '').toUpperCase()) }, 'Join')), msg, list]);
     code.focus();
-    api.friends().then(({ friends }) => {
-      const on = friends.filter(f => f.online && f.room);
-      if (on.length) list.append(el('h3', {}, 'Online now'), ...on.map(f => el('div', { class: 'friend' }, el('span', { class: 'online-dot on' }), el('b', { class: 'grow' }, f.username), el('button', { class: 'btn small coral', onclick: () => go(f.room!) }, 'Join'))));
-    }).catch(() => {});
+    const head = el('h3', { hidden: true }, 'Online now');
+    list.append(head);
+    const show = (f: Friend) => { if (!f.online || !f.room) return; head.hidden = false; list.append(el('div', { class: 'friend' }, el('span', { class: 'online-dot on' }), el('b', { class: 'grow' }, f.username), el('button', { class: 'btn small coral', onclick: () => go(f.room!) }, 'Join'))); };
+    api.friendsLive(show).then(({ friends }) => { for (const f of friends) if (!f.checking) show(f); }).catch(() => {});
   }
 
   // ---------- friends ----------
@@ -100,20 +100,24 @@ export class Menus {
         try { const r = await api.addFriend(add.value); note.textContent = `Added ${r.friend.username}!`; audio.play('chime'); render(); } catch (e: any) { note.textContent = e.message; }
       } }, 'Add')), note);
       let data: { friends: Friend[]; invites: any[] } = { friends: [], invites: [] };
-      try { data = await api.friends(); } catch (e: any) { body.append(el('p', {}, e.message)); return; }
+      try { data = await api.friendsLive(f => (f as any)._redraw?.()); } catch (e: any) { body.append(el('p', {}, e.message)); return; }
       if (data.invites.length) body.append(el('h3', { style: { marginTop: '12px' } }, 'Invites'), ...data.invites.map(i => el('div', { class: 'friend' }, el('b', { class: 'grow' }, `${i.from} invited you`),
         el('button', { class: 'btn small coral', onclick: async () => { m.close(); const err = await this.a.join(i.room); if (err) this.toastModal(err); } }, 'Join'),
         el('button', { class: 'btn small ghost', onclick: async () => { await api.dismiss(i.id); render(); } }, 'Dismiss'))));
       body.append(el('h3', { style: { marginTop: '12px' } }, `Friends (${data.friends.length})`));
       if (!data.friends.length) body.append(el('p', { class: 'muted' }, 'Share your code with friends and add theirs. Their shops appear across the street from yours!'));
-      for (const f of data.friends) {
+      const row = (f: Friend) => {
         const hosting = coop.role === 'host';
-        body.append(el('div', { class: 'friend' }, el('span', { class: 'online-dot' + (f.online ? ' on' : '') }),
-          el('div', { class: 'grow' }, el('b', {}, f.username), el('div', { class: 'muted', style: { fontSize: '12px' } }, `${esc(f.shopName || '')} · Lv ${f.shopLevel || 1} · ${f.online ? 'online' : 'offline'}`)),
+        return el('div', { class: 'friend' }, el('span', { class: 'online-dot' + (f.online ? ' on' : '') }),
+          el('div', { class: 'grow' }, el('b', {}, f.username), el('div', { class: 'muted', style: { fontSize: '12px' } }, `${esc(f.shopName || '')} · Lv ${f.shopLevel || 1} · ${f.checking ? 'checking…' : f.online ? (f.room ? 'in their shop' : 'online') : 'offline'}`)),
           f.online && f.room ? el('button', { class: 'btn small coral', onclick: async () => { m.close(); const err = await this.a.join(f.room!); if (err) this.toastModal(err); } }, 'Join') : null,
           el('button', { class: 'btn small', onclick: () => { m.close(); this.a.visit(f.friendCode, f.username); } }, 'Visit'),
-          hosting && f.online ? el('button', { class: 'btn small sun', onclick: async () => { try { await api.invite(f.id, coop.room!); this.flash(body, `Invited ${f.username}!`); } catch (e: any) { this.flash(body, e.message); } } }, 'Invite') : null,
-          el('button', { class: 'btn small ghost', title: 'Remove friend', onclick: async () => { await api.removeFriend(f.id); render(); } }, '✕')));
+          hosting && f.online ? el('button', { class: 'btn small sun', onclick: async () => { try { await api.inviteFriend(f, coop.room!); this.flash(body, `Invited ${f.username}!`); } catch (e: any) { this.flash(body, e.message); } } }, 'Invite') : null,
+          el('button', { class: 'btn small ghost', title: 'Remove friend', onclick: async () => { await api.removeFriend(f.id); render(); } }, '✕'));
+      };
+      for (const f of data.friends) {
+        let r = row(f); body.append(r);
+        (f as any)._redraw = () => { const n = row(f); r.replaceWith(n); r = n; };
       }
       const rec = el('details', { style: { marginTop: '14px' } }, el('summary', { style: { cursor: 'pointer', fontWeight: 800 } }, '🔑 Play on another device'),
         el('p', { class: 'muted' }, 'Your recovery code logs you into this account (and its cloud save) on another device. Keep it secret.'),

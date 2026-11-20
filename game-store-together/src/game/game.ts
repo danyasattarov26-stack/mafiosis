@@ -52,7 +52,7 @@ export class Game {
   private opts: Opt[] = [];
   private holdT = 0; private holdKey = '';
   private altT = -1;
-  private saveT = 20; private cloudT = 60; private beatT = 2;
+  private saveT = 20; private cloudT = 300; private beatT = 2;
   private stockRepeat = 0;
   private dirtyCloud = false;
   running = false;
@@ -167,7 +167,7 @@ export class Game {
     if (this.isHost && !this.readOnly) {
       this.saveT -= dt; this.cloudT -= dt;
       if (this.saveT <= 0) { this.saveT = 15; saveLocal(w.save); }
-      if (this.cloudT <= 0 && this.dirtyCloud) { this.cloudT = 60; this.dirtyCloud = false; this.cloud(); }
+      if (this.cloudT <= 0 && this.dirtyCloud) { this.cloudT = 300; this.dirtyCloud = false; this.cloud(); }
     }
     this.beatT -= dt;
     if (this.beatT <= 0) { this.beatT = 30; this.heartbeat(); }
@@ -190,7 +190,7 @@ export class Game {
   }
   private cloud() { if (api.online && this.isHost && !this.readOnly) api.saveCloud(this.world.save, SAVE_VERSION).catch(e => console.warn('cloud save failed', e.message)); }
   private async heartbeat() {
-    if (!api.online) return;
+    if (!api.online || api.presence === 'p2p') return; // peer-to-peer mode: friends ping our inbox instead
     try {
       const inv = await api.heartbeat(coop.role === 'host' ? coop.room : null);
       for (const i of inv) {

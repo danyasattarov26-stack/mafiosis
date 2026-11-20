@@ -14,6 +14,7 @@ import { Inventory, Register, Debug, daySummary, levelUp } from './ui/panels';
 import { Menus } from './ui/menus';
 import { api } from './net/api';
 import { coop } from './net/coop';
+import { inbox } from './net/p2p';
 
 const $ = (id: string) => document.getElementById(id)!;
 const bar = $('boot-bar'), msg = $('boot-msg');
@@ -62,6 +63,11 @@ async function boot() {
     visit: async (code, name) => {
       try {
         const r = await api.visit(code);
+        if (api.presence === 'p2p' && coop.transportKind === 'p2p') {
+          // ask the friend's game directly whether it's open
+          const st = await inbox.probe(code, 8000);
+          if (st) { r.profile.online = true; r.profile.room = st.room; }
+        }
         if (r.profile.online && r.profile.room) {
           const err = await menus['a'].join(r.profile.room);
           if (!err) return; // joined live
@@ -122,7 +128,10 @@ async function boot() {
     audio.unlock(); audio.startMusic();
     if (!input.touch) input.lock();
     // friends' shops across the street
-    api.friends().then(({ friends }) => game.view.city.setNeighbours(friends.map(f => ({ code: f.friendCode, name: f.username, shopName: f.shopName, online: f.online, level: f.shopLevel || 1 })))).catch(() => {});
+    let friendsNow: any[] = [];
+    const paint = () => game.view.city.setNeighbours(friendsNow.map(f => ({ code: f.friendCode, name: f.username, shopName: f.shopName, online: f.online, level: f.shopLevel || 1 })));
+    let repaint: any = null;
+    api.friendsLive(() => { clearTimeout(repaint); repaint = setTimeout(paint, 400); }).then(({ friends }) => { friendsNow = friends; paint(); }).catch(() => {});
   }
 
   async function start(fresh?: SaveData) {
@@ -213,6 +222,14 @@ async function boot() {
   if (!api.profile) await menus.creator(true);
   else if (api.profile.local && api.db) await api.register(api.profile.username, api.profile.appearance, api.profile.shopName).catch(() => {});
   if (api.profile) coop.setMe(api.profile.username, api.profile.appearance);
+  // peer-to-peer presence: friends can see we're online and send invites
+  inbox.status = () => ({ name: api.profile?.username || '', shopName: game.world.save.shopName, level: game.world.save.level, room: coop.role === 'host' ? coop.room : null });
+  inbox.onInvite = inv => {
+    audio.play('chime');
+    if (game.running) game.hud.toast(`🎮 ${inv.from} invited you to co-op!`, 'info', 20000, [{ label: 'Join', fn: () => menus['a'].join(inv.room).then(err => err && menus.toastModal(err)) }]);
+    else menus.toastModal(`🎮 ${inv.from} invited you to their shop! Use Join friend with code ${inv.fromCode || inv.room}.`);
+  };
+  if (api.profile?.friendCode && coop.transportKind === 'p2p' && api.db) inbox.open(api.profile.friendCode);
   showMenu();
   if (debugMode && new URLSearchParams(location.search).has('autostart')) start();
   if (hasLocal()) local = loadLocal();

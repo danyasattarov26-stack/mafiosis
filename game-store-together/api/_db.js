@@ -1,5 +1,8 @@
 /*
   Data layer for Game Store Together.
+  - With a Vercel Blob store (BLOB_READ_WRITE_TOKEN) and no Postgres, it keeps accounts, friends and saves as
+    small private JSON files. Presence and invites then travel peer-to-peer, so the store is only touched for
+    sign-in, profile changes, friends and saves.
   - With a Postgres URL (Supabase via the Vercel integration sets POSTGRES_URL / POSTGRES_URL_NON_POOLING)
     it uses the gst_* tables, created and upgraded by the migrations below.
   - Without one, local dev uses an in-memory store so everything still works on your machine.
@@ -184,8 +187,94 @@ const MemRepo = {
   async heartbeat(id, room) { const p = mem.profiles.get(id); if (p) { p.online_at = new Date(); p.room = room; } },
 };
 
+// ---------- Vercel Blob repo ----------
+const B = { profiles: id => `gst/profiles/${id}.json`, tokens: h => `gst/tokens/${h}.json`, codes: c => `gst/codes/${c}.json`, saves: id => `gst/saves/${id}.json` };
+const cache = new Map(); // path → { data, etag, at }
+const CACHE_MS = 20_000;
+async function bget(path, fresh = false) {
+  const c = cache.get(path);
+  if (!fresh && c && Date.now() - c.at < CACHE_MS) return c;
+  const { get } = await import('@vercel/blob');
+  let r = null;
+  try { r = await get(path, { access: 'private', useCache: false }); } catch (e) { if (/not.?found/i.test(e?.message || e?.name || '')) r = null; else throw e; }
+  if (!r || r.statusCode !== 200) { cache.delete(path); return null; }
+  const v = { data: JSON.parse(await new Response(r.stream).text()), etag: r.blob.etag, at: Date.now() };
+  cache.set(path, v);
+  return v;
+}
+/** mode: 'create' (fail if exists) | 'replace' (unconditional) | an etag (fail if changed) */
+async function bput(path, data, mode) {
+  const { put } = await import('@vercel/blob');
+  const opts = { access: 'private', contentType: 'application/json', addRandomSuffix: false, allowOverwrite: mode !== 'create', cacheControlMaxAge: 60 };
+  if (mode !== 'create' && mode !== 'replace' && mode) opts.ifMatch = mode;
+  const r = await put(path, JSON.stringify(data), opts);
+  cache.set(path, { data, etag: r.etag, at: Date.now() });
+  return r;
+}
+const conflict = e => /precondition|already exists|etag/i.test(e?.message || '') || e?.name === 'BlobPreconditionFailedError';
+async function bupdate(path, fn) {
+  for (let i = 0; i < 5; i++) {
+    const cur = await bget(path, i > 0);
+    if (!cur) return null;
+    const next = fn(structuredClone(cur.data));
+    if (!next) return cur.data;
+    try { await bput(path, next, cur.etag); return next; } catch (e) { if (!conflict(e)) throw e; cache.delete(path); }
+  }
+  throw new Error('busy, try again');
+}
+const BlobRepo = {
+  async createProfile(username, appearance, shopName) {
+    const id = crypto.randomUUID(), token = newToken();
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code = newFriendCode();
+      try { await bput(B.codes(code), { id }, 'create'); break; } catch (e) { if (!conflict(e)) throw e; code = ''; }
+    }
+    if (!code) throw new Error('could not allocate a friend code');
+    const p = { id, token_hash: hashToken(token), username, friend_code: code, appearance, shop_name: shopName, shop_level: 1, created_at: new Date().toISOString(), friends: [], online_at: null, room: null };
+    await bput(B.profiles(id), p, 'create');
+    await bput(B.tokens(p.token_hash), { id }, 'create');
+    return { token, profile: p };
+  },
+  async byToken(t) { const r = await bget(B.tokens(hashToken(t))); if (!r) return null; const p = await bget(B.profiles(r.data.id)); return p ? p.data : null; },
+  async byCode(c) { const r = await bget(B.codes(c)); if (!r) return null; const p = await bget(B.profiles(r.data.id)); return p ? p.data : null; },
+  async update(id, f) {
+    return bupdate(B.profiles(id), p => {
+      const n = { ...p };
+      if (f.username != null) n.username = f.username;
+      if (f.appearance) n.appearance = f.appearance;
+      if (f.shopName != null) n.shop_name = f.shopName;
+      if (f.shopLevel != null) n.shop_level = f.shopLevel;
+      return JSON.stringify(n) === JSON.stringify(p) ? null : n;
+    });
+  },
+  async getSave(id) { const r = await bget(B.saves(id), true); return r ? { version: r.data.version, data: r.data.data, updatedAt: r.data.updatedAt } : null; },
+  async putSave(id, version, data) { const at = Date.now(); await bput(B.saves(id), { version, data, updatedAt: at }, 'replace'); cache.delete(B.saves(id)); return at; },
+  async friends(id) {
+    const me = await bget(B.profiles(id), true); if (!me) return [];
+    const list = await Promise.all((me.data.friends || []).map(f => bget(B.profiles(f)).then(r => r?.data).catch(() => null)));
+    return list.filter(Boolean).sort((a, b) => a.username.localeCompare(b.username));
+  },
+  async areFriends(a, b) { const p = await bget(B.profiles(a)); return !!p?.data.friends?.includes(b); },
+  async addFriend(a, b) {
+    await bupdate(B.profiles(a), p => (p.friends || []).includes(b) ? null : { ...p, friends: [...(p.friends || []), b] });
+    await bupdate(B.profiles(b), p => (p.friends || []).includes(a) ? null : { ...p, friends: [...(p.friends || []), a] });
+  },
+  async removeFriend(a, b) {
+    await bupdate(B.profiles(a), p => ({ ...p, friends: (p.friends || []).filter(x => x !== b) }));
+    await bupdate(B.profiles(b), p => ({ ...p, friends: (p.friends || []).filter(x => x !== a) }));
+  },
+  // presence and invites go peer-to-peer in this mode: nothing to store
+  async invite() {},
+  async invites() { return []; },
+  async dismiss() {},
+  async heartbeat() {},
+  p2pPresence: true,
+};
+
 export function repo() {
   if (dbUrl()) return PgRepo;
+  if (process.env.BLOB_READ_WRITE_TOKEN) return BlobRepo;
   if (process.env.VERCEL) return null; // deployed without a database: the game falls back to local saves
   return MemRepo;
 }

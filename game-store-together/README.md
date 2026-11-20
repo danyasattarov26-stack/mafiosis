@@ -58,8 +58,11 @@ and grow a tiny laptop corner into the best LAN café in the city.
 ## Tech
 
 - **Three.js (r187) + TypeScript + Vite**, deployed on **Vercel**.
-- **Supabase** (via the Vercel Marketplace) for accounts, saves, friends and invites (Postgres) and real-time co-op
-  (Realtime broadcast + presence).
+- **Backend, two interchangeable setups** (picked automatically from the environment):
+  - **Vercel Blob + peer-to-peer (live setup):** accounts, friends and cloud saves are small private JSON files in a
+    Vercel Blob store; co-op, online status and invites go directly between players over WebRTC
+    ([Trystero](https://github.com/dmotz/trystero), which finds peers through public Nostr relays: no game server).
+  - **Supabase** (via the Vercel Marketplace): Postgres for accounts/saves/friends/invites and Realtime for co-op.
 - One serverless endpoint, [`api/game.js`](api/game.js), for accounts, saves, friends, invites and visits.
   Database migrations live in [`api/_db.js`](api/_db.js) and run automatically on every build ([`scripts/migrate.mjs`](scripts/migrate.mjs))
   and again lazily on the first API call.
@@ -103,12 +106,17 @@ npm run build        # migrate (if a DB is configured) + typecheck + production 
 To use a real database locally, put the Supabase variables from Vercel in `.env.local`
 (`vercel env pull`), e.g. `POSTGRES_URL`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
-## Deploying (Vercel + Supabase)
+## Deploying
 
 1. Import the repo into Vercel (framework: Vite; `vercel.json` sets the build).
-2. In the Vercel project: **Storage → Connect Database → Supabase → Create**. This injects `POSTGRES_URL`,
-   `POSTGRES_URL_NON_POOLING`, `SUPABASE_URL` and `SUPABASE_ANON_KEY` (plus a service key the game never sends to browsers).
-3. Redeploy. The build runs the migrations; the API also self-migrates on first use.
+2. Pick a backend:
+   - **Simplest:** Storage → Create → **Blob** (private) and connect it to the project. That adds `BLOB_READ_WRITE_TOKEN`;
+     co-op runs peer-to-peer.
+   - **Or Supabase:** Storage → Connect Database → **Supabase**. This injects `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`,
+     `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Postgres wins over Blob when both exist.
+3. Redeploy. With Supabase the build runs the migrations (the API also self-migrates on first use).
+
+Testing co-op locally: `npm run dev` uses tabs of the same browser; add `?p2p` to try the real peer-to-peer transport.
 
 Security: all tables have row-level security on with no policies, so the public anon key (used only for Realtime
 channels) can't read or write them. Only the server functions touch the database. Account tokens are stored hashed.

@@ -28,7 +28,7 @@ async function handle(request) {
   const url = new URL(request.url);
   const op = url.searchParams.get('op') || '';
   const R = repo();
-  if (op === 'config') return json({ db: !!R, realtime: realtimeConfig() });
+  if (op === 'config') return json({ db: !!R, realtime: realtimeConfig(), presence: R?.p2pPresence ? 'p2p' : R ? 'server' : 'none' });
   if (!R) return json({ error: 'offline', detail: 'no database connected' }, 503);
 
   let body = {};
