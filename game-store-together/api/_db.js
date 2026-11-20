@@ -269,6 +269,14 @@ const BlobRepo = {
   async invites() { return []; },
   async dismiss() {},
   async heartbeat() {},
+  /** write + read back a tiny file: proves the store token can write (one call per check) */
+  async health() {
+    const t0 = Date.now(), stamp = { at: t0, n: Math.random() };
+    await bput('gst/health.json', stamp, 'replace');
+    cache.delete('gst/health.json');
+    const r = await bget('gst/health.json', true);
+    return { ok: r?.data?.n === stamp.n, ms: Date.now() - t0, store: 'blob' };
+  },
   p2pPresence: true,
 };
 

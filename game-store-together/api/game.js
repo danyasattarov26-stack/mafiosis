@@ -30,6 +30,7 @@ async function handle(request) {
   const R = repo();
   if (op === 'config') return json({ db: !!R, realtime: realtimeConfig(), presence: R?.p2pPresence ? 'p2p' : R ? 'server' : 'none' });
   if (!R) return json({ error: 'offline', detail: 'no database connected' }, 503);
+  if (op === 'health' && R.health) return json(await R.health());
 
   let body = {};
   if (request.method === 'POST') { try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400); } }
