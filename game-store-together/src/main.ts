@@ -106,7 +106,7 @@ async function boot() {
   setTimeout(checkUpdate, 5000);
 
   game.ui = {
-    openLaptop: () => { openUi(); laptop.show(); },
+    openLaptop: (tab?: any) => { openUi(); laptop.show(tab); },
     openInventory: () => { openUi(); inventory.show(); },
     openPause: () => { openUi(); paused = true; menus.showPause(); },
     register: v => register.show(v),

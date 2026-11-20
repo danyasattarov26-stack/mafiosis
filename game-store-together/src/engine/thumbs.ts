@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ITEM } from '../config/items';
 import { buildObject } from '../world/objects';
 import { productProto } from '../world/props';
-import { instance } from './assets';
+import { instance, polyWalk, polyIdleTime } from './assets';
 
 class Thumbs {
   private r: THREE.WebGLRenderer | null = null;
@@ -43,7 +43,7 @@ class Thumbs {
       o = buildObject({ id: 'thumb', item: id, x: 0, z: 0, rot: 0, mon: 0, chair: 0, desk: 0, wall: d.kind === 'wall', y: 0 }).root;
       o.position.set(0, 0, 0);
     }
-    if (o) { o.traverse((m: any) => { if (m.isSprite) m.visible = false; }); this.objs.set(id, o); }
+    if (o) { o.traverse((m: any) => { if (m.isSprite || m.userData.thumbHide) m.visible = false; }); this.objs.set(id, o); }
     return o;
   }
 
@@ -80,6 +80,25 @@ class Thumbs {
     r.render(this.scene, this.cam);
     this.scene.remove(o);
     cx.drawImage(r.domElement, 0, 0, target.width, target.height);
+  }
+
+  /** portrait of a customer model, for the regulars list */
+  person(model: string): string | null {
+    const key = 'person:' + model;
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    const o = instance(model);
+    const clip = polyWalk();   // relaxed standing pose instead of the bind T-pose
+    if (clip) { const mx = new THREE.AnimationMixer(o); const a = mx.clipAction(clip); a.play(); a.time = polyIdleTime(); a.timeScale = 0; mx.update(0); }
+    const r = this.init();
+    this.scene.add(o); o.rotation.y = -0.35;
+    o.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(o), h = bb.max.y - bb.min.y;
+    this.cam.position.set(0.35, bb.min.y + h * 0.78, h * 1.25); this.cam.lookAt(0, bb.min.y + h * 0.68, 0);
+    r.render(this.scene, this.cam);
+    const url = r.domElement.toDataURL('image/png');
+    this.scene.remove(o);
+    this.cache.set(key, url);
+    return url;
   }
 
   /** a character preview for the creator */

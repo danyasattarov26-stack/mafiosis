@@ -3,16 +3,20 @@
   money, XP, reviews and the end-of-day summary. Only the host (or a solo player) runs this.
 */
 import { ECON, EXPANSIONS, PERKS, STAFF, xpForLevel, XP, LICENSES } from '../config/economy';
-import { ITEM, ITEMS, PRODUCTS } from '../config/items';
-import { CUSTOMERS, REVIEW_LINES, type CustomerType } from '../config/npcs';
+import { ITEM, ITEMS, PRODUCTS, MEALS, MEAL } from '../config/items';
+import { CUSTOMERS, REVIEW_LINES, REGULARS, REGULAR, hearts, type CustomerType } from '../config/npcs';
+import { GOAL, ACHIEVEMENTS, rollGoals } from '../config/goals';
 import { emptyDay, type PlacedObject, type Box } from '../core/save';
 import { clamp, pick, rand, chance, uid, angleDelta } from '../core/util';
 import { preset } from '../core/settings';
-import { World, type Customer, type StaffNpc, type DaySummary } from './world';
-import { useSpots, seats, counterSpots, deliveryZone, shopSize, dist, DOOR, SIDEWALK_Z, type V2 } from './layout';
+import { World, type Customer, type StaffNpc, type DaySummary, type Anim } from './world';
+import { useSpots, seats, counterSpots, foodSpots, deliveryZone, shopSize, dist, DOOR, SIDEWALK_Z, type V2 } from './layout';
 
 const has = (w: World, perk: string) => w.save.perks.includes(perk);
 const svc = (w: World, s: string) => w.save.services.includes(s);
+const kindOf = (o: PlacedObject) => ITEM[o.item]?.kind;
+const SHOUTS = ['📢', '😱', '🔥', '💬', '🤬', '🏆', '😂', '❤️', '🎉', '💀'];
+const PLAY_ANIM: Record<string, Anim> = { racing: 'drive', vr: 'vr' };
 
 export class Sim {
   w: World;
@@ -20,6 +24,9 @@ export class Sim {
   private spawnT = 3;
   private vendT = 0;
   private claims = new Set<string>();
+  private shoutT = new Map<string, number>();
+  private followers: { at: number; from: string }[] = [];
+  private goalT = 0;
 
   constructor(w: World) { this.w = w; }
 
@@ -79,6 +86,16 @@ export class Sim {
         for (const o of s.objects) if (ITEM[o.item]?.kind === 'vending' && chance(0.7)) { const a = Math.round(rand(2, 4)); this.earn(a, 'vending', o.x, o.z); }
       }
     }
+    // followers of a live streamer come to watch
+    for (const f of [...this.followers]) if (f.at <= this.clock) {
+      this.followers.splice(this.followers.indexOf(f), 1);
+      if (!s.open) continue;
+      const types = (['casual', 'pro', 'kid'] as CustomerType[]).filter(t => CUSTOMERS[t].level <= s.level);
+      const c = this.spawnCustomer(pick(types), true);
+      if (c) { c.bubble = '📱'; w.ev.emit('toast', { msg: `📱 One of ${f.from}'s viewers came to check out the shop!`, kind: 'good' }); }
+    }
+    this.goalT -= dt;
+    if (this.goalT <= 0) { this.goalT = 1; this.checkGoals(); }
     for (const c of [...w.customers]) this.updateCustomer(c, dt);
     for (const st of w.staff) this.updateStaff(st, dt);
     this.syncStaffRoster();
@@ -94,15 +111,29 @@ export class Sim {
     m *= Math.max(0.4, 1 - this.dirt() * 0.04);
     const stations = s.objects.filter(o => ITEM[o.item]?.kind === 'station').length;
     m *= clamp(0.55 + stations * 0.22, 0.6, 2.2);
+    m *= 1 + 0.35 * this.w.customers.filter(c => c.live).length;   // viewers drop by
     return m;
   }
 
   // ---------- customers ----------
-  spawnCustomer(type?: CustomerType) {
+  hasBuild(build: string) { return this.w.save.objects.some(o => ITEM[o.item]?.build === build); }
+  spawnCustomer(type?: CustomerType, force = false, regularId?: string) {
     const w = this.w, s = w.save;
     const cap = Math.min(preset().maxCustomers, 6 + s.objects.length * 2);
-    if (!type && w.customers.length >= cap) return null;
-    const pool = Object.values(CUSTOMERS).filter(c => c.level <= s.level);
+    if (!type && !force && w.customers.length >= cap) return null;
+    const pod = this.hasBuild('pod');
+    // sometimes a named regular walks in instead of a stranger
+    let reg = regularId ? REGULAR[regularId] : null;
+    if (!type && !reg && s.level >= 2 && chance(0.13)) {
+      const here = new Set(w.customers.map(c => c.regular));
+      // once a day each (VIPs sometimes twice)
+      const cand = REGULARS.filter(r => CUSTOMERS[r.type].level <= s.level && !here.has(r.id) && (r.type !== 'streamer' || pod) && (s.regulars[r.id]?.lastDay !== s.day || (s.regulars[r.id]?.vip && chance(0.3))));
+      const wt = (r: typeof REGULARS[number]) => (s.regulars[r.id]?.vip ? 2 : 1);
+      let x = Math.random() * cand.reduce((a, r) => a + wt(r), 0);
+      for (const r of cand) { x -= wt(r); if (x <= 0) { reg = r; break; } }
+    }
+    const pool = Object.values(CUSTOMERS).filter(c => c.level <= s.level && (c.id !== 'streamer' || pod));
+    if (reg) type = reg.type;
     let t = type ? CUSTOMERS[type] : pool[0];
     if (!type) { let r = Math.random() * pool.reduce((a, b) => a + b.weight, 0); for (const c of pool) { r -= c.weight; if (r <= 0) { t = c; break; } } }
     const side = chance(0.5) ? -1 : 1;
@@ -111,8 +142,14 @@ export class Sim {
       x: side * rand(9, 14), z: SIDEWALK_Z + rand(-0.3, 0.3), y: 0, ry: side > 0 ? -Math.PI / 2 : Math.PI / 2, anim: 'walk',
       state: 'enter', t: 0, tMax: 0, patience: 0, path: [], speed: t.speed * rand(0.9, 1.1),
       target: null, seat: -1, plan: [], cart: [], scanned: 0, pay: 'card', given: 0,
-      sat: 72, reasons: [], progress: 0, bubble: '', queueAt: null, after: null,
+      sat: reg ? 76 : 72, reasons: [], progress: 0, bubble: '', queueAt: null, after: null, order: null, regular: reg ? reg.id : null,
     };
+    if (reg) {
+      c.model = reg.model; c.tint = reg.tint;
+      const st = s.regulars[reg.id] ||= { love: 0, visits: 0, lastDay: 0 };
+      st.visits++; st.lastDay = s.day; s.today.regulars++;
+      w.ev.emit('toast', { msg: `👋 ${reg.name} ${st.visits > 1 ? 'is back' : 'walked in for the first time'}!${st.vip ? ' 💳 VIP' : ''}`, kind: 'info' });
+    }
     c.path = [{ x: DOOR.outside.x + rand(-0.3, 0.3), z: DOOR.outside.z }, { x: 0, z: -0.4 }, { x: rand(-0.6, 0.6), z: DOOR.inside.z - 0.3 }];
     w.customers.push(c);
     w.ev.emit('sfx', { name: 'door', x: 0, z: 0 });
@@ -135,10 +172,20 @@ export class Sim {
     c.state = state; c.anim = 'walk';
   }
 
+  private stocked() { return new Set(this.w.save.objects.filter(o => (kindOf(o) === 'shelf' || kindOf(o) === 'fridge') && o.product && (o.stock || 0) > 0).map(o => o.product!)); }
   private decide(c: Customer) {
     const def = CUSTOMERS[c.type];
     const s = this.w.save;
     const canShop = s.objects.some(o => ITEM[o.item]?.kind === 'counter') && s.objects.some(o => (ITEM[o.item]?.kind === 'shelf' || ITEM[o.item]?.kind === 'fridge') && (o.stock || 0) > 0);
+    if (c.regular) {
+      const r = REGULAR[c.regular], st = s.regulars[c.regular];
+      if (st && !st.wish && this.stocked().has(r.wish)) {
+        st.wish = true; st.love = (st.love || 0) + 12;
+        this.w.ev.emit('toast', { msg: `✨ ${r.name} is thrilled you stock ${ITEM[r.wish].name}! (+💛)`, kind: 'good' });
+      }
+      if (canShop && this.stocked().has(r.fav) && chance(0.35) && this.wantShop(c, r.fav)) return true;
+    }
+    if (c.type !== 'streamer' && chance(c.type === 'kid' ? 0.2 : 0.12) && this.wantFood(c)) return true;
     const hasArcade = s.objects.some(o => ITEM[o.item]?.kind === 'arcade' && !o.broken);
     let r = Math.random();
     const wants = { ...def.wants };
@@ -166,6 +213,11 @@ export class Sim {
       for (let i = 0; i < n; i++) if (!use[i]) {
         let score = (d.tier || 0) * (c.type === 'pro' ? 3 : 1) + (o.chair || 0) + rand(0, 1.5);
         if (c.type === 'kid' && d.build === 'console') score += 3;
+        if (d.build === 'pod') score += c.type === 'streamer' ? 14 : -3;       // leave the pod for streamers
+        else if (c.type === 'streamer') score -= 4;
+        if (d.build === 'racing') score += c.type === 'pro' ? 3 : c.type === 'spender' ? 2 : 0.5;
+        if (d.build === 'vr') score += c.type === 'kid' ? 2.5 : c.type === 'spender' ? 3 : 1;
+        if (d.build === 'retro') score += c.type === 'kid' ? 2.5 : c.type === 'casual' ? 1.5 : c.type === 'pro' ? -3 : 0;
         list.push({ o, seat: i, score });
       }
     }
@@ -222,15 +274,14 @@ export class Sim {
     return true;
   }
 
-  private wantShop(c: Customer): boolean {
+  private wantShop(c: Customer, fav?: string): boolean {
     const def = CUSTOMERS[c.type];
-    const s = this.w.save;
-    const stocked = new Set(s.objects.filter(o => o.product && (o.stock || 0) > 0).map(o => o.product!));
+    const stocked = this.stocked();
     if (!stocked.size) return false;
     const n = Math.round(rand(def.items[0], def.items[1]));
     const liked = def.likes.filter(p => stocked.has(p));
-    const plan: string[] = [];
-    for (let i = 0; i < n; i++) plan.push(liked.length && chance(0.75) ? pick(liked) : pick([...stocked]));
+    const plan: string[] = fav ? [fav] : [];
+    for (let i = plan.length; i < n; i++) plan.push(liked.length && chance(0.75) ? pick(liked) : pick([...stocked]));
     c.plan = plan;
     c.bubble = '🛒';
     return this.nextShelf(c);
@@ -238,7 +289,7 @@ export class Sim {
   private nextShelf(c: Customer): boolean {
     while (c.plan.length) {
       const p = c.plan[0];
-      const shelves = this.w.save.objects.filter(o => o.product === p && (o.stock || 0) > 0);
+      const shelves = this.w.save.objects.filter(o => o.product === p && (o.stock || 0) > 0 && kindOf(o) !== 'foodbar');
       if (!shelves.length) { c.plan.shift(); c.sat -= 8; c.reasons.push('stock'); continue; }
       shelves.sort((a, b) => dist(a, c) - dist(b, c));
       const o = shelves[0];
@@ -257,7 +308,7 @@ export class Sim {
     const counters = this.w.save.objects.filter(o => ITEM[o.item]?.kind === 'counter');
     if (!counters.length) { this.leave(c, 'stock', -10); return true; }
     const trouble = CUSTOMERS[c.type].trouble;
-    if (trouble && chance(trouble.steal * (svc(this.w, 'cctv') ? 0.4 : 1))) {
+    if (trouble && !this.friendly(c) && chance(trouble.steal * (svc(this.w, 'cctv') ? 0.4 : 1))) {
       c.state = 'steal'; c.anim = 'run'; c.bubble = '🏃';
       c.path = this.w.nav.route({ x: c.x, z: c.z }, { x: chance(0.5) ? -20 : 20, z: SIDEWALK_Z });
       return true;
@@ -278,12 +329,59 @@ export class Sim {
     c.queueAt = null;
   }
 
+  /** friends of the shop (2+ hearts) behave */
+  friendly(c: Customer) { return !!c.regular && hearts(this.w.save.regulars[c.regular]?.love || 0) >= 2; }
+  lose() { const t = this.w.today(); t.lost++; t.streakNow = 0; }
+
+  // ---------- snack bar ----------
+  foodbars() { return this.w.save.objects.filter(o => kindOf(o) === 'foodbar' && !o.broken); }
+  wantFood(c: Customer): boolean {
+    const bars = this.foodbars().filter(o => (o.stock || 0) > 0);
+    if (!bars.length) return false;
+    bars.sort((a, b) => (this.w.queues.get(a.id)?.length || 0) - (this.w.queues.get(b.id)?.length || 0));
+    const k = bars[0];
+    const q = this.w.queues.get(k.id) || [];
+    if (q.length >= 5) return false;
+    q.push(c.id); this.w.queues.set(k.id, q);
+    const m = c.type === 'kid' ? pick(['pizza', 'slushie', 'slushie']) : c.type === 'pro' ? pick(['noodles', 'slushie', 'pizza']) : pick(MEALS).id;
+    c.queueAt = k.id; c.order = m; c.patience = 40; c.bubble = MEAL[m].emoji;
+    this.goTo(c, foodSpots(k).queue(q.length - 1), 'foodQ');
+    return true;
+  }
+  mealPrice(meal: string) { return Math.max(1, Math.round(MEAL[meal].price * this.productPrice('pr_food') / ITEM.pr_food.product!.market)); }
+  /** the head of this bar's line, if they're waiting for food */
+  foodHead(barId: string) {
+    const id = (this.w.queues.get(barId) || [])[0];
+    const c = id ? this.w.cust(id) : null;
+    return c && c.state === 'foodWait' && c.order ? c : null;
+  }
+  serveMeal(barId: string): boolean {
+    const w = this.w, k = w.obj(barId), c = this.foodHead(barId);
+    if (!k || !c || !(k.stock || 0)) return false;
+    k.stock!--; if (!k.stock) k.product = null;
+    const price = this.mealPrice(c.order!);
+    if (price > MEAL[c.order!].price * CUSTOMERS[c.type].priceTolerance) { c.sat -= 10; c.reasons.push('price'); }
+    else c.sat += 10;
+    this.earn(price, 'food', k.x, k.z);
+    w.today().meals++; w.save.lifetime.meals++;
+    this.addXp(XP.meal);
+    c.order = null; c.after = 'eat';
+    this.leaveQueue(c);
+    w.ev.emit('sfx', { name: 'ding', x: k.x, z: k.z });
+    w.bump();
+    this.litter(c, 'trash', 0.5);
+    if (chance(0.3) && this.wantPlay(c)) { c.after = null; return true; }
+    this.leave(c, null);
+    c.bubble = '😋';
+    return true;
+  }
+
   leave(c: Customer, reason: string | null, satDelta = 0) {
     this.release(c);
     this.leaveQueue(c);
     if (reason) { c.reasons.push(reason); c.sat += satDelta; }
     c.bubble = c.sat >= 70 ? '😊' : c.sat >= 45 ? '😐' : '😠';
-    c.state = 'leave'; c.anim = 'walk';
+    c.state = 'leave'; c.anim = 'walk'; c.order = null; c.live = false;
     c.path = this.w.nav.route({ x: c.x, z: c.z }, { x: chance(0.5) ? -22 : 22, z: SIDEWALK_Z + rand(-0.3, 0.3) });
     if (c.cart.length && c.scanned < c.cart.length) c.cart = [];
   }
@@ -313,8 +411,15 @@ export class Sim {
         if (!o || o.broken) { this.release(c); this.wantPlay(c); break; }
         if (this.walk(c, sp, dt)) {
           const st = seats(o)[c.seat] || seats(o)[0];
-          c.x = st.x; c.z = st.z; c.ry = st.ry; c.anim = 'play';
           const d = ITEM[o.item];
+          c.x = st.x; c.z = st.z; c.ry = st.ry; c.anim = PLAY_ANIM[d.build || ''] || 'play';
+          if (c.type === 'streamer' && d.build === 'pod') {
+            c.live = true; s.today.streams++; s.lifetime.streams++;
+            this.shoutT.set(c.id, 1);
+            const who = c.regular ? REGULAR[c.regular].name : 'A streamer';
+            w.ev.emit('toast', { msg: `🔴 ${who} went LIVE in the Streamer Pod!`, kind: 'good' });
+            for (let i = 0, n = Math.round(rand(1, 2)); i < n; i++) this.followers.push({ at: this.clock + rand(4, 12), from: c.regular ? REGULAR[c.regular].name : 'the streamer' });
+          }
           let T = ECON.playSeconds * (d.playMul || 1);
           if (has(w, 'turbo')) T *= 0.85;
           if (svc(w, 'wifi')) T *= 0.85;
@@ -324,6 +429,11 @@ export class Sim {
       }
       case 'playing': {
         c.t -= dt; c.progress = 1 - c.t / c.tMax;
+        if (c.live) {
+          const t = (this.shoutT.get(c.id) || 0) - dt;
+          if (t <= 0) { c.bubble = pick(SHOUTS); w.ev.emit('sfx', { name: chance(0.3) ? 'scream' : 'shout', x: c.x, z: c.z }); this.shoutT.set(c.id, rand(1.6, 3.4)); }
+          else this.shoutT.set(c.id, t);
+        }
         if (c.t <= 0) this.endSession(c);
         break;
       }
@@ -393,12 +503,12 @@ export class Sim {
           if (i === 0) { c.state = 'atCounter'; c.scanned = 0; c.bubble = '🧾'; w.bump(); }
         }
         c.patience -= dt;
-        if (c.patience <= 0) { w.ev.emit('toast', { msg: '😠 A customer gave up waiting at the checkout.', kind: 'bad' }); this.leave(c, 'wait', -25); w.today().lost++; }
+        if (c.patience <= 0) { w.ev.emit('toast', { msg: '😠 A customer gave up waiting at the checkout.', kind: 'bad' }); this.leave(c, 'wait', -25); this.lose(); }
         break;
       }
       case 'atCounter':
         c.patience -= dt * 0.5;
-        if (c.patience <= -20) { this.leave(c, 'wait', -25); w.today().lost++; break; }
+        if (c.patience <= -20) { this.leave(c, 'wait', -25); this.lose(); break; }
         if (c.scanned >= c.cart.length && c.cart.length) {
           c.state = 'paying';
           const total = c.cart.reduce((a, b) => a + b.price, 0);
@@ -411,6 +521,19 @@ export class Sim {
       case 'paying':
         c.patience -= dt * 0.3;
         break;
+      case 'foodQ': case 'foodWait': {
+        const k = c.queueAt ? w.obj(c.queueAt) : null;
+        if (!k) { this.leaveQueue(c); if (!this.wantFood(c)) this.leave(c, null); break; }
+        const q = w.queues.get(k.id) || [];
+        const i = q.indexOf(c.id);
+        const spot = foodSpots(k).queue(Math.max(0, i));
+        if (!c.path.length && dist(c, spot) > 0.15) c.path = [spot];
+        if (this.walk(c, sp, dt)) { c.ry = spot.ry; c.anim = 'idle'; if (i === 0 && c.state === 'foodQ') { c.state = 'foodWait'; w.bump(); } }
+        c.patience -= dt * (c.state === 'foodWait' ? 0.8 : 1);
+        c.progress = c.state === 'foodWait' ? clamp(1 - c.patience / 40, 0, 1) : 0;
+        if (c.patience <= 0) { c.progress = 0; w.ev.emit('toast', { msg: `😠 A hungry customer gave up waiting for ${MEAL[c.order || 'pizza'].name.toLowerCase()}.`, kind: 'bad' }); this.leave(c, 'wait', -20); this.lose(); }
+        break;
+      }
       case 'steal':
         if (this.walk(c, sp, dt)) {
           w.today().thefts++;
@@ -423,7 +546,7 @@ export class Sim {
         break;
     }
     // customers walking through the shop push the anim
-    if (c.path.length && c.state !== 'playing' && c.state !== 'arcading') c.anim = c.state === 'steal' ? 'run' : 'walk';
+    if (c.path.length && c.state !== 'playing' && c.state !== 'arcading') c.anim = c.state === 'steal' ? 'run' : c.after === 'eat' ? 'eat' : 'walk';
   }
 
   private checkWaiting(c: Customer, dt: number) {
@@ -445,7 +568,7 @@ export class Sim {
     }
     if (c.patience <= 0) {
       c.progress = 0;
-      this.w.today().lost++;
+      this.lose();
       this.w.ev.emit('toast', { msg: '😠 A customer left: no free station.', kind: 'bad' });
       this.leave(c, 'wait', -30);
     }
@@ -469,16 +592,18 @@ export class Sim {
       let tip = 0;
       if (c.sat > 80 && def.payMul > 1) tip = Math.round(Math.min(has(w, 'tips') ? 8 : 4, (c.sat - 80) / 5 * def.payMul));
       else if (has(w, 'tips') && c.sat > 85) tip = Math.round(rand(1, 5));
+      if (c.regular && w.save.regulars[c.regular]?.vip) tip += 3;
+      if (c.live) tip += Math.round(rand(3, 9) * def.payMul);     // chat donations
       this.earn(price, 'session', o.x, o.z);
       if (tip) this.earn(tip, 'tip', o.x, o.z + 0.3);
-      w.today().sessions++;
+      w.today().sessions++; w.save.lifetime.sessions++;
       o.sessions = (o.sessions || 0) + 1;
       this.addXp(XP.session);
       // breakdowns and vandalism
       let br = d.breakChance || 0;
       if (has(w, 'techie')) br *= 0.6;
       const tr = def.trouble;
-      const vandal = tr ? tr.vandal * (svc(w, 'cctv') ? 0.4 : 1) : 0;
+      const vandal = tr && !this.friendly(c) ? tr.vandal * (svc(w, 'cctv') ? 0.4 : 1) : 0;
       if (chance(br) || chance(vandal)) {
         o.broken = true; w.bump();
         w.ev.emit('toast', { msg: `⚠️ ${d.name} broke down${chance(vandal) ? ' (someone kicked it!)' : ''}. Hold E on it to repair.`, kind: 'bad' });
@@ -488,8 +613,10 @@ export class Sim {
       const spot = useSpots(o)[Math.min(c.seat, useSpots(o).length - 1)];
       if (spot) { c.x = spot.x; c.z = spot.z; }
     }
+    if (c.live) { c.live = false; this.shoutT.delete(c.id); c.bubble = ''; }
     this.release(c);
     this.litter(c, chance(0.7) ? 'trash' : 'spill');
+    if (chance(c.type === 'streamer' ? 0.45 : 0.28) && this.wantFood(c)) return;
     if (chance(0.3) && this.wantShop(c)) return;
     if (chance(0.12) && this.wantArcade(c)) return;
     this.leave(c, null);
@@ -522,7 +649,7 @@ export class Sim {
   catchThief(c: Customer) {
     const total = c.cart.reduce((a, b) => a + b.price, 0);
     if (total) this.earn(total, 'sale', c.x, c.z);
-    this.addXp(XP.catchThief);
+    this.addXp(XP.catchThief); this.w.save.lifetime.caught++;
     c.cart = []; c.sat = 20; c.bubble = '😳';
     this.w.ev.emit('toast', { msg: `🚨 Caught a thief! They paid $${total}.`, kind: 'good' });
     this.leave(c, null);
@@ -532,14 +659,17 @@ export class Sim {
     const w = this.w, s = w.save;
     if (c.sat >= 0) {
       const sat = clamp(c.sat, 0, 100);
-      w.today().served++; w.today().satSum += sat; w.today().satN++;
+      const t = w.today();
+      t.served++; t.satSum += sat; t.satN++; t.streakNow++; t.streak = Math.max(t.streak, t.streakNow);
       s.lifetime.customers++;
+      if (c.regular) this.befriend(c, sat);
       const stars = clamp(Math.round(sat / 20 + 0.2), 1, 5);
       if (chance(stars >= 5 || stars <= 2 ? 0.75 : 0.45)) {
         const reason = c.reasons[c.reasons.length - 1];
         const key = stars >= 5 ? 'great' : stars === 4 ? 'good' : reason && REVIEW_LINES[reason] ? reason : stars <= 2 ? 'dirty' : 'good';
         const text = pick(REVIEW_LINES[stars <= 3 && reason && REVIEW_LINES[reason] ? reason : key] || REVIEW_LINES.good);
-        const rv = { stars, text, day: s.day, who: CUSTOMERS[c.type].name };
+        const rv = { stars, text, day: s.day, who: c.regular ? REGULAR[c.regular].name : CUSTOMERS[c.type].name };
+        if (stars >= 5) { w.today().fiveStar++; s.lifetime.fiveStar++; }
         s.reviews.push(rv); if (s.reviews.length > 80) s.reviews.splice(0, s.reviews.length - 80);
         if (stars >= 5) this.addXp(XP.review5); else if (stars === 4) this.addXp(XP.review4);
         w.ev.emit('review', rv);
@@ -547,21 +677,72 @@ export class Sim {
     }
     this.remove(c);
   }
+  /** a regular's visit changes their friendship: VIP card at 3 hearts, a gift at 5 */
+  private befriend(c: Customer, sat: number) {
+    const w = this.w, s = w.save, r = REGULAR[c.regular!];
+    const st = s.regulars[r.id] ||= { love: 0, visits: 1, lastDay: s.day };
+    const before = hearts(st.love);
+    st.love = clamp((st.love || 0) + (sat >= 85 ? 8 : sat >= 70 ? 6 : sat >= 50 ? 3 : sat < 35 ? -6 : 0), 0, 100);
+    const now = hearts(st.love);
+    if (now > before) w.ev.emit('toast', { msg: `💛 ${r.name} likes your shop more! (${'♥'.repeat(now)}${'♡'.repeat(5 - now)})`, kind: 'good' });
+    if (now >= 3 && !st.vip) {
+      st.vip = true;
+      this.earn(40, 'member', c.x, c.z);
+      w.ev.emit('toast', { msg: `💳 ${r.name} bought a VIP membership (+$40)! VIPs visit more and tip on every session.`, kind: 'good' });
+    }
+    if (now >= 5 && !st.gift) {
+      st.gift = true;
+      s.inventory[r.gift] = (s.inventory[r.gift] || 0) + 1;
+      w.ev.emit('toast', { msg: `🎁 ${r.name} gave you a gift: ${ITEM[r.gift]?.name || 'something nice'}! It's in your inventory (Tab).`, kind: 'good' });
+      w.bump();
+    }
+  }
+
+  // ---------- daily goals & achievements ----------
+  checkGoals() {
+    const w = this.w, s = w.save;
+    for (const g of s.goals) {
+      if (g.done) continue;
+      const def = GOAL[g.id]; if (!def) continue;
+      if (def.stat(s.today) >= g.target) {
+        g.done = true;
+        s.money += g.money; s.today.bonus += g.money;
+        this.addXp(g.xp);
+        w.ev.emit('goal', { icon: def.icon, text: def.text(g.target), money: g.money, xp: g.xp, kind: 'goal' });
+        if (s.goals.every(x => x.done)) {
+          const extra = 40 + s.level * 10;
+          s.money += extra; s.today.bonus += extra;
+          w.ev.emit('goal', { icon: '🎯', text: 'All daily goals done!', money: extra, xp: 0, kind: 'goal' });
+        }
+        w.bump();
+      }
+    }
+    for (const a of ACHIEVEMENTS) {
+      if (s.achievements.includes(a.id) || !a.check(s)) continue;
+      s.achievements.push(a.id);
+      this.addXp(a.xp);
+      w.ev.emit('goal', { icon: a.icon, text: a.name, money: 0, xp: a.xp, kind: 'achievement' });
+      w.bump();
+    }
+  }
+
   private remove(c: Customer) {
     this.release(c); this.leaveQueue(c);
     const i = this.w.customers.indexOf(c); if (i >= 0) this.w.customers.splice(i, 1);
   }
 
   // ---------- money / xp ----------
-  earn(amount: number, kind: 'session' | 'sale' | 'arcade' | 'tip' | 'vending', x: number, z: number) {
+  earn(amount: number, kind: 'session' | 'sale' | 'arcade' | 'tip' | 'vending' | 'food' | 'member', x: number, z: number) {
     const s = this.w.save, t = s.today;
     s.money += amount; s.lifetime.revenue += amount;
     if (kind === 'session') t.sessionRev += amount;
     else if (kind === 'sale') t.salesRev += amount;
     else if (kind === 'arcade') t.arcadeRev += amount;
     else if (kind === 'tip') t.tips += amount;
+    else if (kind === 'food') t.foodRev += amount;
+    else if (kind === 'member') t.members += amount;
     else t.arcadeRev += amount;
-    this.w.ev.emit('cash', { x, z, amount, label: kind === 'tip' ? 'tip' : undefined });
+    this.w.ev.emit('cash', { x, z, amount, label: kind === 'tip' ? 'tip' : kind === 'member' ? 'VIP' : undefined });
     this.w.ev.emit('sfx', { name: kind === 'sale' ? 'cash' : 'coins', x, z });
   }
   addXp(n: number) {
@@ -602,7 +783,7 @@ export class Sim {
           if (st.t > 0) { st.anim = 'work'; return; }
           const key = st.task?.split(':')[1];
           const ti = s.trash.findIndex(t => t.id === key);
-          if (ti >= 0) { s.trash.splice(ti, 1); w.bump(); w.ev.emit('sfx', { name: 'sweep', x: st.x, z: st.z }); }
+          if (ti >= 0) { s.trash.splice(ti, 1); s.today.cleaned++; s.lifetime.cleaned++; w.bump(); w.ev.emit('sfx', { name: 'sweep', x: st.x, z: st.z }); }
           const bi = s.boxes.findIndex(b => b.id === key && b.empty && !b.carrier);
           if (bi >= 0) { s.boxes.splice(bi, 1); w.bump(); }
           this.unclaim(st); st.state = 'idle'; st.anim = 'idle';
@@ -624,7 +805,7 @@ export class Sim {
         if (st.state === 'repairing') {
           if (st.t > 0) { st.anim = 'work'; return; }
           const o = w.obj(st.task!.split(':')[1]);
-          if (o && o.broken) { o.broken = false; w.bump(); w.ev.emit('sfx', { name: 'repair', x: o.x, z: o.z }); }
+          if (o && o.broken) { o.broken = false; s.today.repaired++; w.bump(); w.ev.emit('sfx', { name: 'repair', x: o.x, z: o.z }); }
           this.unclaim(st); st.state = 'idle';
           return;
         }
@@ -656,6 +837,31 @@ export class Sim {
         st.anim = 'work';
         if (head.state === 'atCounter' && head.scanned < head.cart.length) { head.scanned++; st.t = 0.9 * (has(w, 'cashier') ? 0.5 : 1); w.bump(); w.ev.emit('sfx', { name: 'beep', x: k.x, z: k.z }); return; }
         if (head.state === 'paying') { st.t = 1.2; this.completeCheckout(head, head.pay === 'cash' ? head.given - head.cart.reduce((a, b) => a + b.price, 0) : null); }
+        return;
+      }
+      case 'cook': {
+        let k = st.counter ? w.obj(st.counter) : null;
+        if (!k) {
+          st.counter = null;
+          const taken = new Set(w.staff.filter(x => x !== st && x.counter).map(x => x.counter));
+          k = this.foodbars().find(o => !taken.has(o.id)) || null;
+          if (!k) { if (st.t <= 0) { st.t = 2; this.wander(st); } return; }
+          st.counter = k.id;
+          this.goTo(st, foodSpots(k).cook, 'going');
+          return;
+        }
+        const spot = foodSpots(k).cook;
+        if (dist(st, spot) > 0.3) { if (!st.path.length) this.goTo(st, spot, 'going'); return; }
+        st.ry = spot.ry;
+        const head = this.foodHead(k.id);
+        if (st.task) {
+          if (!head || 'cook:' + head.id !== st.task) { st.task = null; st.anim = 'idle'; return; }
+          st.anim = 'work';
+          if (st.t <= 0) { st.task = null; st.anim = 'idle'; this.serveMeal(k.id); }
+          return;
+        }
+        st.anim = 'idle';
+        if (head && (k.stock || 0) > 0 && !w.registerUser.get(k.id)) { st.task = 'cook:' + head.id; st.t = MEAL[head.order!].secs * 1.4 * (has(w, 'mechanic') ? 0.7 : 1); st.anim = 'work'; }
         return;
       }
       case 'restocker': {
@@ -693,7 +899,7 @@ export class Sim {
         // find a shelf that needs stock and a box that fits it
         const free = s.boxes.filter(b => b.product && !b.empty && !b.carrier && !b.at && b.count > 0);
         if (!free.length) { this.wander(st); return; }
-        const shelves = s.objects.filter(o => { const d = ITEM[o.item]; return (d?.kind === 'shelf' || d?.kind === 'fridge') && (o.stock || 0) < (d.capacity || 0) * 0.6; })
+        const shelves = s.objects.filter(o => { const d = ITEM[o.item]; return (d?.kind === 'shelf' || d?.kind === 'fridge' || d?.kind === 'foodbar') && (o.stock || 0) < (d.capacity || 0) * 0.6; })
           .sort((a, b) => (a.stock || 0) / (ITEM[a.item].capacity || 1) - (b.stock || 0) / (ITEM[b.item].capacity || 1));
         for (const o of shelves) {
           if ([...this.claims].some(k => k.startsWith('stock:' + o.id + ':'))) continue;
@@ -732,7 +938,7 @@ export class Sim {
     const newReviews = s.reviews.filter(r => r.day === s.day);
     const sum: DaySummary = {
       day: s.day,
-      income: { 'Gaming sessions': t.sessionRev, 'Store sales': t.salesRev, 'Arcade & vending': t.arcadeRev, Tips: t.tips },
+      income: { 'Gaming sessions': t.sessionRev, 'Store sales': t.salesRev, 'Snack Bar': t.foodRev, 'Arcade & vending': t.arcadeRev, Tips: t.tips, 'VIP memberships': t.members, 'Goal rewards': t.bonus },
       costs: { 'Stock bought': Math.round(t.spentStock), 'Items bought': Math.round(t.spentItems), Salaries: wages, Rent: rent, Electricity: power },
       net: 0, served: t.served, lost: t.lost, sat: t.satN ? Math.round(t.satSum / t.satN) : 0, reviews: newReviews, xp: Math.round(t.xp), rating: this.rating(), thefts: t.thefts,
     };
@@ -745,6 +951,8 @@ export class Sim {
     const s = this.w.save;
     if (!s.dayOver) return;
     s.day++; s.time = ECON.dayStart; s.open = false; s.dayOver = false; s.today = emptyDay();
+    s.goals = rollGoals(s);
+    this.followers.length = 0;
     for (const b of s.boxes) b.at = 0;
     this.w.summary = null;
     for (const c of [...this.w.customers]) this.remove(c);

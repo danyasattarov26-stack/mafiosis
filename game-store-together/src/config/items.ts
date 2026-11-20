@@ -17,7 +17,7 @@ export const CATEGORIES: { id: CategoryId; name: string; icon: string; blurb: st
   { id: 'upgrades', name: 'Store Upgrades', icon: '⭐', blurb: 'Shelves, counters and shop services.' },
 ];
 
-export type Kind = 'station' | 'arcade' | 'shelf' | 'fridge' | 'counter' | 'bin' | 'decor' | 'wall' | 'product' | 'component' | 'service' | 'vending';
+export type Kind = 'station' | 'arcade' | 'shelf' | 'fridge' | 'counter' | 'bin' | 'decor' | 'wall' | 'product' | 'component' | 'service' | 'vending' | 'foodbar';
 export type Slot = 'mon' | 'chair' | 'desk';
 
 export interface ItemDef {
@@ -37,6 +37,8 @@ export interface ItemDef {
   tint?: string;
   // stations
   seats?: number;
+  stand?: boolean;         // played standing (VR)
+  kitted?: boolean;        // ships fully equipped: no component upgrades
   tier?: number;           // pc tier 0..3 (laptop = 0)
   priceMul?: number;       // session price multiplier
   playMul?: number;        // play-time multiplier (lower = faster turnover)
@@ -48,12 +50,12 @@ export interface ItemDef {
   arcadePrice?: number;
   // shelves
   capacity?: number;
-  accepts?: 'shelf' | 'fridge';
+  accepts?: 'shelf' | 'fridge' | 'foodbar';
   // components
   slot?: Slot;
   slotTier?: number;
   // products
-  product?: { market: number; cost: number; perBox: number; place: 'shelf' | 'fridge'; mesh: string; color?: string };
+  product?: { market: number; cost: number; perBox: number; place: 'shelf' | 'fridge' | 'foodbar'; mesh: string; color?: string };
   // services
   service?: string;
 }
@@ -62,12 +64,20 @@ export const ITEMS: ItemDef[] = [
   // ---------- Gaming PCs (stations) ----------
   { id: 'st_laptop', name: 'Starter Gaming Laptop', cat: 'pcs', kind: 'station', price: 60, level: 1, build: 'station', tier: 0, priceMul: 1, playMul: 1.1, power: 2, breakChance: 0.05, appeal: 1, seats: 1, size: [3, 4],
     desc: 'A trusty laptop on a desk. Where every gaming empire starts.' },
+  { id: 'st_retro', name: 'Retro PC', cat: 'pcs', kind: 'station', price: 90, level: 1, build: 'retro', tier: 0, priceMul: 0.75, playMul: 0.9, power: 1, breakChance: 0.06, appeal: 2, seats: 1, size: [3, 4], kitted: true,
+    desc: 'A beige box and a chunky CRT. Cheap and cheerful: kids and nostalgic gamers love it.' },
   { id: 'st_pc1', name: 'Gaming PC — Bronze', cat: 'pcs', kind: 'station', price: 180, level: 1, build: 'station', tier: 1, priceMul: 1.25, playMul: 1, power: 4, breakChance: 0.035, appeal: 3, seats: 1, size: [3, 4],
     desc: 'Solid tower with a 24" monitor. Customers pay a bit more.' },
   { id: 'st_pc2', name: 'Gaming PC — Silver', cat: 'pcs', kind: 'station', price: 450, level: 3, build: 'station', tier: 2, priceMul: 1.6, playMul: 0.95, power: 6, breakChance: 0.025, appeal: 6, seats: 1, size: [3, 4],
     desc: 'Glass-side tower with RGB fans. Pros love it.' },
   { id: 'st_pc3', name: 'RGB Beast PC', cat: 'pcs', kind: 'station', price: 1200, level: 5, license: 'premium', build: 'station', tier: 3, priceMul: 2.2, playMul: 0.9, power: 9, breakChance: 0.015, appeal: 12, seats: 1, size: [3, 4],
     desc: 'Water-cooled monster with dual monitors. The flagship.' },
+  { id: 'st_stream', name: 'Streamer Pod', cat: 'pcs', kind: 'station', price: 900, level: 3, build: 'pod', tier: 2, priceMul: 2.0, playMul: 1.7, power: 7, breakChance: 0.02, appeal: 10, seats: 1, size: [4, 5], kitted: true,
+    desc: 'A soundproof booth with mic, ring light and webcam. Streamers go live, shout at chat and bring their followers.' },
+  { id: 'st_racing', name: 'Sim Racing Rig', cat: 'pcs', kind: 'station', price: 1400, level: 4, build: 'racing', tier: 3, priceMul: 2.4, playMul: 1.2, power: 8, breakChance: 0.025, appeal: 12, seats: 1, size: [4, 5], kitted: true,
+    desc: 'Bucket seat, steering wheel, pedals and three curved screens. Racing fans pay top dollar.' },
+  { id: 'st_vr', name: 'VR Station', cat: 'pcs', kind: 'station', price: 1100, level: 5, build: 'vr', tier: 3, priceMul: 2.0, playMul: 1.0, power: 6, breakChance: 0.03, appeal: 12, seats: 1, size: [5, 5], stand: true, kitted: true,
+    desc: 'Headset, play mat and tracking towers. Players flail around hilariously.' },
 
   // ---------- Consoles & arcade ----------
   { id: 'st_console', name: 'Console Couch', cat: 'consoles', kind: 'station', price: 350, level: 2, license: 'consoles', build: 'console', tier: 1, priceMul: 1.2, playMul: 1.1, power: 3, breakChance: 0.03, appeal: 6, seats: 2, size: [5, 5],
@@ -110,6 +120,7 @@ export const ITEMS: ItemDef[] = [
   { id: 'pr_energy', name: 'Energy Drink', cat: 'snacks', kind: 'product', price: 24, level: 1, license: 'retail', product: { market: 5, cost: 2, perBox: 12, place: 'fridge', mesh: 'soda-bottle', color: '#80ed99' }, desc: 'Box of 12. Sells for ~$5 each.' },
   { id: 'pr_chips', name: 'Chips', cat: 'snacks', kind: 'product', price: 12, level: 1, license: 'retail', product: { market: 3, cost: 1, perBox: 12, place: 'shelf', mesh: 'bag', color: '#ffb703' }, desc: 'Box of 12 bags. Sells for ~$3 each.' },
   { id: 'pr_candy', name: 'Candy Bars', cat: 'snacks', kind: 'product', price: 10, level: 1, license: 'retail', product: { market: 2, cost: 0.8, perBox: 16, place: 'shelf', mesh: 'candy', color: '#9d4edd' }, desc: 'Box of 16. Sells for ~$2 each.' },
+  { id: 'pr_food', name: 'Food Supplies', cat: 'snacks', kind: 'product', price: 40, level: 2, license: 'retail', product: { market: 7, cost: 2, perBox: 20, place: 'foodbar', mesh: 'pizza-box', color: '#e9c46a' }, desc: 'Box of 20 meals (pizza, noodles, slushies) for the Snack Bar.' },
   { id: 'pr_game', name: 'Game Boxes', cat: 'merch', kind: 'product', price: 176, level: 2, license: 'merch', product: { market: 40, cost: 22, perBox: 8, place: 'shelf', mesh: 'gamebox', color: '#4361ee' }, desc: 'Box of 8 games. Sells for ~$40 each.' },
   { id: 'pr_plush', name: 'Plush Toys', cat: 'merch', kind: 'product', price: 72, level: 2, license: 'merch', product: { market: 20, cost: 9, perBox: 8, place: 'shelf', mesh: 'plush', color: '#ff8fab' }, desc: 'Box of 8. Sells for ~$20 each.' },
   { id: 'pr_controller', name: 'Controllers', cat: 'merch', kind: 'product', price: 150, level: 3, license: 'merch', product: { market: 45, cost: 25, perBox: 6, place: 'shelf', mesh: 'controller', color: '#2b2d42' }, desc: 'Box of 6. Sells for ~$45 each.' },
@@ -122,6 +133,8 @@ export const ITEMS: ItemDef[] = [
   { id: 'fu_shelf', name: 'Wall Shelf', cat: 'upgrades', kind: 'shelf', price: 80, level: 1, license: 'retail', build: 'shelf', model: 'shelf-end', size: [4, 2], capacity: 18, accepts: 'shelf', appeal: 1, desc: 'Holds 18 of one shelf product. Front side only.' },
   { id: 'fu_shelf2', name: 'Island Shelf', cat: 'upgrades', kind: 'shelf', price: 160, level: 2, license: 'retail', build: 'shelf', model: 'shelf-boxes', size: [4, 4], capacity: 36, accepts: 'shelf', appeal: 2, desc: 'Double-sided, holds 36 of one shelf product.' },
   { id: 'fu_fridge', name: 'Drinks Fridge', cat: 'upgrades', kind: 'fridge', price: 220, level: 1, license: 'retail', build: 'fridge', model: 'freezers-standing', size: [5, 3], capacity: 30, accepts: 'fridge', power: 3, appeal: 2, desc: 'Holds 30 drinks of one kind. Ice cold.' },
+  { id: 'fu_foodbar', name: 'Snack Bar', cat: 'upgrades', kind: 'foodbar', price: 350, level: 2, license: 'retail', build: 'foodbar', size: [5, 3], capacity: 40, accepts: 'foodbar', power: 3, appeal: 5,
+    desc: 'Make microwave pizza, noodles and slushies to order. Hungry gamers pay $5–8. Stock it with Food Supplies.' },
   { id: 'fu_bin', name: 'Trash Bin', cat: 'upgrades', kind: 'bin', price: 30, level: 1, build: 'model', model: 'trash', scale: 0.7, size: [2, 2], desc: 'Throw empty boxes here. Customers litter less nearby.' },
   { id: 'fu_vending', name: 'Vending Machine', cat: 'upgrades', kind: 'vending', price: 500, level: 3, build: 'model', model: 'vending-machine', size: [3, 3], power: 3, appeal: 4, desc: 'Sells drinks by itself: ~$25 a day per machine.' },
 
@@ -132,6 +145,14 @@ export const ITEMS: ItemDef[] = [
   { id: 'sv_cctv', name: 'Security Cameras', cat: 'upgrades', kind: 'service', service: 'cctv', price: 350, level: 3, desc: 'Troublemakers behave: −60% theft and vandalism.' },
   { id: 'sv_ads', name: 'Billboard Ads', cat: 'upgrades', kind: 'service', service: 'ads', price: 600, level: 4, desc: '+25% more customers walk in.' },
 ];
+
+/** what the snack bar makes */
+export const MEALS = [
+  { id: 'pizza', name: 'Pizza slice', emoji: '🍕', price: 8, secs: 3, model: 'pizza' },
+  { id: 'noodles', name: 'Noodle bowl', emoji: '🍜', price: 7, secs: 3, model: 'bowl-broth' },
+  { id: 'slushie', name: 'Slushie', emoji: '🥤', price: 5, secs: 2, model: 'cup-coffee' },
+];
+export const MEAL = Object.fromEntries(MEALS.map(m => [m.id, m]));
 
 export const ITEM: Record<string, ItemDef> = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 export const PRODUCTS = ITEMS.filter(i => i.kind === 'product');

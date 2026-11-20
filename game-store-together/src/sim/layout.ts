@@ -89,6 +89,7 @@ export function useSpots(o: PlacedObject): Spot[] {
     case 'arcade': return [mk(0, front + 0.35)];
     case 'shelf': return def.size![1] >= 4 ? [mk(0, front + 0.35), mk(0, -front - 0.35, 0)] : [mk(0, front + 0.35)];
     case 'fridge': case 'bin': return [mk(0, front + 0.35)];
+    case 'foodbar': return [mk(0.35, front + 0.4), mk(0, -front - 0.4, 0)];
     case 'counter': return [mk(0, front + 0.35)];
     default: return [];
   }
@@ -98,8 +99,28 @@ export function useSpots(o: PlacedObject): Spot[] {
 export function seats(o: PlacedObject): (Spot & { y: number })[] {
   const def = ITEM[o.item];
   if (!def || def.kind !== 'station') return [];
-  if (def.build === 'console') return [-0.45, 0.45].map(lx => ({ ...toWorld(o, lx, 0.62), ry: worldRy(o, Math.PI), y: 0 }));
-  return [{ ...toWorld(o, 0, 0.18), ry: worldRy(o, Math.PI), y: 0 }];
+  const at = (lz: number, y = 0) => ({ ...toWorld(o, 0, lz), ry: worldRy(o, Math.PI), y });
+  switch (def.build) {
+    case 'console': return [-0.45, 0.45].map(lx => ({ ...toWorld(o, lx, 0.62), ry: worldRy(o, Math.PI), y: 0 }));
+    case 'pod': return [at(POD.seatZ)];
+    case 'racing': return [at(RIG.seatZ)];
+    case 'vr': return [at(0.15)];
+    default: return [at(0.18)];
+  }
+}
+
+/** shared measurements of the bigger stations (local space) */
+export const POD = { W: 2.0, D: 2.5, H: 2.35, shift: -0.25, seatZ: -0.07 };
+export const RIG = { seatZ: 0.42, wheelZ: -0.12, wheelY: 0.74 };
+
+/** snack bar: where customers line up to order and where the cook stands */
+export function foodSpots(o: PlacedObject) {
+  const [, dc] = defSize(o.item);
+  const front = (dc * CELL) / 2;
+  return {
+    cook: { ...toWorld(o, 0, -front - 0.4), ry: worldRy(o, 0) },
+    queue: (i: number) => ({ ...toWorld(o, 0.35, front + 0.4 + i * 0.75), ry: worldRy(o, Math.PI) }),
+  };
 }
 
 /** checkout: where the cashier stands and where the queue forms */

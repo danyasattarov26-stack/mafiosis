@@ -5,7 +5,7 @@
 */
 import * as THREE from 'three';
 import { instance, loaded, polyWalk, polyIdleTime, characterTexture, ownMaterials } from '../engine/assets';
-import { hat, emojiTexture, ringFrame, textCanvas } from './props';
+import { hat, emojiTexture, ringFrame, textCanvas, box, mat } from './props';
 import type { Anim } from '../sim/world';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
@@ -50,6 +50,9 @@ export class CharView {
   lookKey = '';
   seatY = 0.47;
   topY = 1.8;
+  private headset: THREE.Object3D | null = null;
+  private snack: THREE.Object3D | null = null;
+  private labelKey = '';
 
   constructor(public modelName: string, opts: { tint?: number; look?: any } = {}) {
     this.kind = /^human(Male|Female)A$/.test(modelName) ? 'retro' : 'poly';
@@ -115,6 +118,8 @@ export class CharView {
   }
 
   setLabel(text: string, color = '#ffd166') {
+    if (this.labelKey === text + color) return;
+    this.labelKey = text + color;
     if (this.label) { this.label.removeFromParent(); (this.label.material as THREE.SpriteMaterial).map?.dispose(); }
     const t = textCanvas(text, { w: 256, h: 64, bg: 'rgba(20,16,40,0.7)', fg: color });
     this.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
@@ -126,9 +131,43 @@ export class CharView {
     this.ring.visible = p > 0.001 && p < 0.999;
     if (this.ring.visible) (this.ring.material as THREE.SpriteMaterial).map = ringFrame(p, warn);
   }
-  setBubble(e: string) {
-    this.bubble.visible = !!e && !this.ring.visible;
+  /** emoji bubble; `stack` keeps it visible above the progress ring (streamers shouting, food orders) */
+  setBubble(e: string, stack = false) {
+    this.bubble.visible = !!e && (!this.ring.visible || stack);
+    this.bubble.position.y = this.height + (this.ring.visible && stack ? 0.78 : 0.3);
     if (e) (this.bubble.material as THREE.SpriteMaterial).map = emojiTexture(e);
+  }
+
+  /** a VR headset on the head bone, only while playing VR */
+  private wearHeadset(on: boolean) {
+    if (on && !this.headset) {
+      const head = this.bones['Head']; if (!head) return;
+      const g = new THREE.Group();
+      g.add(box(0.2, 0.11, 0.12, mat('#1b1b22', { rough: 0.4 }), 0, -0.055, 0));
+      g.add(box(0.17, 0.035, 0.01, mat('#3ee6ff', { emissive: '#3ee6ff', ei: 1.8 }), 0, -0.04, 0.061));
+      g.add(box(0.21, 0.03, 0.2, mat('#2b2d42'), 0, -0.015, -0.08));
+      this.mixer.update(0); this.model.updateMatrixWorld(true);
+      const s = new THREE.Vector3(); head.getWorldScale(s);
+      const hp = new THREE.Vector3(); head.getWorldPosition(hp);
+      g.scale.setScalar((this.kind === 'retro' ? 1.4 : 1) / Math.max(0.001, s.x));
+      g.position.set(0, (this.height - 0.25 + 0.1 - hp.y) / Math.max(0.001, s.y), 0.08 / Math.max(0.001, s.z));
+      head.add(g); this.headset = g;
+    }
+    if (this.headset) this.headset.visible = on;
+  }
+  /** a pizza slice in the right hand while eating */
+  private holdSnack(on: boolean) {
+    if (on && !this.snack) {
+      const hand = this.bones['RightHand']; if (!hand) return;
+      const g = new THREE.Group();
+      const slice = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 3).rotateX(Math.PI / 2).scale(1, 0.18, 1), mat('#f4a261', { rough: 0.8 }));
+      slice.userData.ownGeo = true; g.add(slice);
+      g.add(box(0.03, 0.006, 0.03, mat('#e63946'), 0, 0.012, 0.02), box(0.025, 0.006, 0.025, mat('#e63946'), 0.01, 0.012, -0.03));
+      const s = new THREE.Vector3(); hand.getWorldScale(s);
+      g.scale.setScalar(1 / Math.max(0.001, s.x));
+      hand.add(g); this.snack = g;
+    }
+    if (this.snack) this.snack.visible = on;
   }
 
   private play(a: THREE.AnimationAction | null, fade = 0.2) {
@@ -143,7 +182,9 @@ export class CharView {
     // skip animating far away characters on weak devices
     if (camPos) { this.root.getWorldPosition(_v); if (_v.distanceToSquared(camPos) > 900 && Math.floor(this.t * 20) % 3) return; }
     this.anim = anim;
-    const moving = anim === 'walk' || anim === 'run' || anim === 'carry';
+    const moving = anim === 'walk' || anim === 'run' || anim === 'carry' || anim === 'eat';
+    this.wearHeadset(anim === 'vr');
+    this.holdSnack(anim === 'eat');
     if (anim === 'run') { this.play(this.run); if (this.run) this.run.timeScale = this.kind === 'poly' ? 1.7 : 1; }
     else if (moving) { this.play(this.walk); if (this.walk && this.kind === 'poly') this.walk.timeScale = 1; }
     else this.play(this.idle);
@@ -159,7 +200,38 @@ export class CharView {
       aim(this.model, b.RightArm, b.RightForeArm, D(-0.18, -1, -sw));
       aim(this.model, b.RightForeArm, b.RightHand, D(-0.08, -1, 0.18 + Math.max(0, -sw)));
     }
-    if (anim === 'sit' || anim === 'play') {
+    if (anim === 'eat') {
+      this.model.updateMatrixWorld(true);
+      const bite = Math.max(0, Math.sin(this.t * 2.2)) * 0.25;
+      aim(this.model, b.RightArm, b.RightForeArm, D(-0.25, -0.6, 0.45));
+      aim(this.model, b.RightForeArm, b.RightHand, D(0.15, 0.6 + bite, 0.55));
+    } else if (anim === 'vr') {
+      // standing, waving at things only they can see
+      this.model.updateMatrixWorld(true);
+      const t = this.t;
+      const lx = Math.sin(t * 2.1) * 0.6, ly = Math.sin(t * 3.3 + 1) * 0.5, rx = Math.sin(t * 2.7 + 2) * 0.6, ry = Math.cos(t * 2.4) * 0.5;
+      aim(this.model, b.LeftArm, b.LeftForeArm, D(0.5 + lx * 0.3, ly, 0.8));
+      aim(this.model, b.LeftForeArm, b.LeftHand, D(0.2 + lx * 0.4, ly + 0.3, 1));
+      aim(this.model, b.RightArm, b.RightForeArm, D(-0.5 + rx * 0.3, ry, 0.8));
+      aim(this.model, b.RightForeArm, b.RightHand, D(-0.2 + rx * 0.4, ry + 0.3, 1));
+      if (b.Head && b.Neck) aim(this.model, b.Neck, b.Head, D(Math.sin(t * 1.3) * 0.35, 1, 0.15 + Math.sin(t * 1.7) * 0.2));
+      if (b.Spine && b.Spine1) aim(this.model, b.Spine, b.Spine1, D(Math.sin(t * 1.1) * 0.12, 1, 0.05));
+    } else if (anim === 'drive') {
+      // low racing seat: legs out to the pedals, hands on the wheel
+      this.model.updateMatrixWorld(true);
+      for (const s of ['Left', 'Right']) {
+        aim(this.model, b[s + 'UpLeg'], b[s + 'Leg'], D(s === 'Left' ? 0.1 : -0.1, 0.05, 1));
+        aim(this.model, b[s + 'Leg'], b[s + 'Foot'], D(0, -0.45, 1));
+      }
+      this.model.position.y = this.seatY - this.hipsY + 0.06;
+      if (b.Spine && b.Spine1) aim(this.model, b.Spine, b.Spine1, D(0, 1, -0.32));
+      const steer = Math.sin(this.t * 1.6) * 0.12;
+      aim(this.model, b.LeftArm, b.LeftForeArm, D(0.22, -0.25, 1));
+      aim(this.model, b.LeftForeArm, b.LeftHand, D(-0.1, 0.25 + steer, 1));
+      aim(this.model, b.RightArm, b.RightForeArm, D(-0.22, -0.25, 1));
+      aim(this.model, b.RightForeArm, b.RightHand, D(0.1, 0.25 - steer, 1));
+      if (b.Head && b.Neck) aim(this.model, b.Neck, b.Head, D(0, 1, 0.3));
+    } else if (anim === 'sit' || anim === 'play') {
       this.model.updateMatrixWorld(true);
       for (const s of ['Left', 'Right']) {
         aim(this.model, b[s + 'UpLeg'], b[s + 'Leg'], D(s === 'Left' ? 0.08 : -0.08, -0.12, 1));

@@ -129,7 +129,7 @@ export function daySummary(game: Game, sum: DaySummary, onDone: () => void) {
     el('h2', {}, `🌙 Day ${sum.day} complete!`),
     el('p', { class: 'muted' }, `${sum.served} customers served · ${sum.lost} walked out · satisfaction ${sum.sat}% · rating ${sum.rating.toFixed(1)}★${sum.thefts ? ` · ${sum.thefts} theft${sum.thefts > 1 ? 's' : ''}` : ''}`),
     el('div', { class: 'summary-grid' },
-      el('div', { class: 'col' }, el('h3', {}, 'Income'), ...Object.entries(sum.income).map(([k, v]) => line(k, v))),
+      el('div', { class: 'col' }, el('h3', {}, 'Income'), ...Object.entries(sum.income).filter(([k, v]) => v || k === 'Gaming sessions').map(([k, v]) => line(k, v))),
       el('div', { class: 'col' }, el('h3', {}, 'Costs'), ...Object.entries(sum.costs).map(([k, v]) => line(k, v, v > 0)))),
     el('div', { class: 'net', style: { color: sum.net >= 0 ? '#1b7a3d' : '#c1121f' } }, `${sum.net >= 0 ? 'Profit' : 'Loss'}: ${money(Math.abs(sum.net))}`),
     el('p', { style: { textAlign: 'center', margin: '0 0 6px' } }, `+${sum.xp} XP today`),

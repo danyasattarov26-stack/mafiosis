@@ -2,6 +2,33 @@
 
 All notable changes to Game Store Together. Versions follow semver; the save format has its own `SAVE_VERSION`.
 
+## [1.2.0] — 2026-11-20
+
+### New stations
+- **Retro PC** (level 1): a beige desktop case and a chunky CRT. Cheap; kids and casual players love it.
+- **Streamer Pod** (level 3): a soundproof booth with acoustic foam, a ring light, mic, webcam and an **ON AIR** sign that
+  lights up when someone goes live. New **Streamer** customers stream there, shout at chat and bring their viewers in.
+- **Sim Racing Rig** (level 4): bucket seat, a wheel that turns while they drive, pedals and three screens.
+- **VR Station** (level 5): a glowing play mat, tracking towers and a spectator screen. Players wear a headset and flail.
+
+### Snack Bar
+- New **Snack Bar** (level 2, Retail License) with a microwave, coffee and slushie machines and a pizza display.
+- Customers line up and order pizza, noodles or slushies; hold **E** to make the order, or hire the new **Cook**.
+- Stock it with **Food Supplies**; restockers keep it filled.
+
+### Regulars & memberships
+- Eight named regulars with their own looks, favourite items and wishes, shown with a name tag in the shop.
+- Hearts grow with happy visits: 3 hearts buys a **VIP membership** (+$40; VIPs visit more and tip every session),
+  5 hearts brings a gift. Friendly troublemakers stop causing trouble. New **Regulars** tab on the laptop.
+
+### Daily goals & achievements
+- Three daily goals every morning with cash and XP rewards, a bonus for finishing all three, and a tracker on the HUD.
+- 23 achievements in the new **Goals** tab.
+
+### Also
+- Day summary lists Snack Bar, VIP memberships and goal rewards; stats show snacks and streams.
+- Save format v4 (old saves upgrade automatically).
+
 ## [1.1.0] — 2026-11-20
 
 ### Online without Supabase

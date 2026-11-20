@@ -1,5 +1,5 @@
 /* Customer types. Models are Polyfork people that share one rig (and one walk cycle). */
-export type CustomerType = 'casual' | 'pro' | 'kid' | 'spender' | 'trouble';
+export type CustomerType = 'casual' | 'pro' | 'kid' | 'spender' | 'trouble' | 'streamer';
 
 export interface CustomerDef {
   id: CustomerType;
@@ -39,6 +39,11 @@ export const CUSTOMERS: Record<CustomerType, CustomerDef> = {
     speed: 1.1, wants: { play: 0.3, arcade: 0.1, shop: 0.6 }, minTier: 0, payMul: 1.6, priceTolerance: 1.6, items: [2, 5], likes: ['pr_headset', 'pr_controller', 'pr_game', 'pr_shirt', 'pr_plush'],
     blurb: 'Buy lots of merch and tip well.',
   },
+  streamer: {
+    id: 'streamer', name: 'Streamers', level: 3, weight: 1.4, models: ['teen-player', 'student-in-a-hoodie', 'graduate-student'],
+    speed: 1.3, wants: { play: 1, arcade: 0, shop: 0 }, minTier: 1, payMul: 1.5, priceTolerance: 1.5, items: [1, 2], likes: ['pr_energy', 'pr_headset', 'pr_mouse'],
+    trouble: { litter: 0.05, spill: 0.05, vandal: 0, steal: 0 }, blurb: 'Go live in the Streamer Pod, shout at chat, and bring followers.',
+  },
   trouble: {
     id: 'trouble', name: 'Troublemakers', level: 3, weight: 1.2, models: ['street-skater', 'kid-in-a-black'],
     speed: 1.5, wants: { play: 0.55, arcade: 0.15, shop: 0.3 }, minTier: 0, payMul: 0.8, priceTolerance: 1.0, items: [1, 2], likes: ['pr_energy', 'pr_chips', 'pr_game'],
@@ -59,3 +64,18 @@ export const REVIEW_LINES: Record<string, string[]> = {
   old: ['PCs are a bit outdated.', 'Need better hardware for real gamers.'],
   change: ['Cashier got my change wrong.'],
 };
+
+/** named customers who come back; friendship grows with happy visits */
+export interface RegularDef { id: string; name: string; type: CustomerType; model: string; tint: number; fav: string; wish: string; gift: string; bio: string }
+export const REGULARS: RegularDef[] = [
+  { id: 'maya', name: 'Maya', type: 'casual', model: 'cafe-customer', tint: 4, fav: 'pr_soda', wish: 'pr_candy', gift: 'dec_neon_gg', bio: 'Comes by after her café shift. Loves cozy corners.' },
+  { id: 'leo', name: 'Leo', type: 'casual', model: 'backpacker', tint: 2, fav: 'pr_chips', wish: 'pr_energy', gift: 'dec_poster3', bio: 'Backpacking around town, plays between trains.' },
+  { id: 'pip', name: 'Pip', type: 'kid', model: 'beginner-kid-skater', tint: 0, fav: 'pr_candy', wish: 'pr_plush', gift: 'dec_prizes', bio: 'Skates over after school. Claw machine champion.' },
+  { id: 'noor', name: 'Noor', type: 'kid', model: 'school-student', tint: 5, fav: 'pr_soda', wish: 'pr_game', gift: 'dec_rug2', bio: 'Speedruns everything. Has opinions about frame rates.' },
+  { id: 'dex', name: 'Dex', type: 'pro', model: 'teen-player', tint: 3, fav: 'pr_energy', wish: 'pr_headset', gift: 'ch_3', bio: 'Ranked grinder. Will judge your hardware.' },
+  { id: 'kira', name: 'Kira', type: 'streamer', model: 'student-in-a-hoodie', tint: 1, fav: 'pr_energy', wish: 'pr_mouse', gift: 'dec_neon_play', bio: 'Streams every evening. Chat calls your shop "the pod place".' },
+  { id: 'gold', name: 'Mr. Gold', type: 'spender', model: 'arriving-hotel-guest', tint: 4, fav: 'pr_controller', wish: 'pr_shirt', gift: 'mon_3', bio: 'Retired, rich, and newly obsessed with games.' },
+  { id: 'rex', name: 'Rex', type: 'trouble', model: 'street-skater', tint: 0, fav: 'pr_chips', wish: 'pr_energy', gift: 'dec_poster2', bio: 'A bit of a troublemaker. Make him a friend and he behaves.' },
+];
+export const REGULAR = Object.fromEntries(REGULARS.map(r => [r.id, r]));
+export const hearts = (love: number) => Math.min(5, Math.floor((love || 0) / 20));

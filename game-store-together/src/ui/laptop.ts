@@ -1,7 +1,8 @@
 /* The manager laptop: a full-screen "ShopOS" app with the shop catalogue, stock & prices, staff, expansion & styles, licenses & perks, reviews and stats. */
 import { CATEGORIES, ITEMS, ITEM, PRODUCTS, type CategoryId } from '../config/items';
 import { STAFF, EXPANSIONS, FLOORS, WALLS, LIGHTS, LICENSES, PERKS, MAX_STAFF_PER_ROLE, ECON } from '../config/economy';
-import { CUSTOMERS } from '../config/npcs';
+import { CUSTOMERS, REGULARS, hearts } from '../config/npcs';
+import { GOAL, ACHIEVEMENTS } from '../config/goals';
 import { el, money, esc } from '../core/util';
 import { thumbs } from '../engine/thumbs';
 import { audio } from '../engine/audio';
@@ -9,10 +10,10 @@ import { locked, unitCost } from '../sim/actions';
 import { shopSize } from '../sim/layout';
 import type { Game } from '../game/game';
 
-type Tab = 'shop' | 'stock' | 'staff' | 'expand' | 'perks' | 'reviews' | 'stats';
+type Tab = 'shop' | 'stock' | 'staff' | 'expand' | 'perks' | 'goals' | 'regulars' | 'reviews' | 'stats';
 const TABS: { id: Tab; icon: string; name: string }[] = [
   { id: 'shop', icon: '🛒', name: 'Shop' }, { id: 'stock', icon: '📦', name: 'Stock & Prices' }, { id: 'staff', icon: '👥', name: 'Staff' },
-  { id: 'expand', icon: '🏗️', name: 'Expand & Style' }, { id: 'perks', icon: '📜', name: 'Licenses & Perks' }, { id: 'reviews', icon: '⭐', name: 'Reviews' }, { id: 'stats', icon: '📊', name: 'Stats' },
+  { id: 'expand', icon: '🏗️', name: 'Expand & Style' }, { id: 'perks', icon: '📜', name: 'Licenses & Perks' }, { id: 'goals', icon: '🎯', name: 'Goals' }, { id: 'regulars', icon: '💛', name: 'Regulars' }, { id: 'reviews', icon: '⭐', name: 'Reviews' }, { id: 'stats', icon: '📊', name: 'Stats' },
 ];
 
 export class Laptop {
@@ -69,6 +70,8 @@ export class Laptop {
       case 'staff': this.renderStaff(); break;
       case 'expand': this.renderExpand(); break;
       case 'perks': this.renderPerks(); break;
+      case 'goals': this.renderGoals(); break;
+      case 'regulars': this.renderRegulars(); break;
       case 'reviews': this.renderReviews(); break;
       case 'stats': this.renderStats(); break;
     }
@@ -198,6 +201,51 @@ export class Laptop {
       el('div', { class: 'section' }, el('h3', {}, 'Customer types'), cust));
   }
 
+  private renderGoals() {
+    const s = this.game.world.save;
+    const today = el('div', { class: 'grid goals-grid' });
+    for (const g of s.goals) {
+      const d = GOAL[g.id]; if (!d) continue;
+      const n = Math.min(g.target, Math.floor(d.stat(s.today)));
+      today.append(el('div', { class: 'card goal' + (g.done ? ' done' : '') },
+        el('div', { class: 'row' }, el('span', { class: 'goal-icon' }, d.icon), el('h3', { class: 'grow' }, d.text(g.target))),
+        el('div', { class: 'bar' }, el('i', { style: { width: (n / g.target) * 100 + '%' } })),
+        el('div', { class: 'stats' }, el('span', { class: 'chip' + (g.done ? ' good' : '') }, g.done ? '✓ Done' : `${n} / ${g.target}`), el('span', { class: 'chip' }, `+${money(g.money)}`), el('span', { class: 'chip' }, `+${g.xp} XP`))));
+    }
+    this.body.append(el('div', { class: 'section' }, el('h3', {}, `Today’s goals (day ${s.day})`), el('p', { class: 'muted' }, 'Three new goals every morning. Finish all three for a bonus.'), today));
+    const got = new Set(s.achievements);
+    const grid = el('div', { class: 'grid ach-grid' });
+    for (const a of ACHIEVEMENTS) grid.append(el('div', { class: 'card ach' + (got.has(a.id) ? ' done' : ' locked') },
+      el('div', { class: 'row' }, el('span', { class: 'goal-icon' }, got.has(a.id) ? a.icon : '🔒'), el('h3', { class: 'grow' }, a.name)), el('p', {}, a.desc), el('div', { class: 'stats' }, el('span', { class: 'chip' + (got.has(a.id) ? ' good' : '') }, got.has(a.id) ? '✓ Unlocked' : `+${a.xp} XP`))));
+    this.body.append(el('div', { class: 'section' }, el('h3', {}, `Achievements · ${got.size}/${ACHIEVEMENTS.length}`), grid));
+  }
+
+  private renderRegulars() {
+    const s = this.game.world.save;
+    this.body.append(el('div', { class: 'section' }, el('h3', {}, 'Regulars'), el('p', { class: 'muted' }, 'Named customers who come back (from level 2). Happy visits earn hearts: at ♥♥♥ they buy a VIP membership (+$40, they visit more and tip every session), at ♥♥♥♥♥ they bring you a gift. Stock their wish item to make their day.')));
+    const grid = el('div', { class: 'grid' });
+    for (const r of REGULARS) {
+      const st = s.regulars[r.id];
+      const unlocked = CUSTOMERS[r.type].level <= s.level;
+      const met = !!st && st.visits > 0;
+      const h = hearts(st?.love || 0);
+      const img = met ? thumbs.person(r.model) : null;
+      const progress = st ? (st.love % 20) / 20 : 0;
+      grid.append(el('div', { class: 'card regular' + (met ? '' : ' locked') },
+        el('div', { class: 'thumb' }, img ? el('img', { src: img, alt: r.name }) : el('span', { style: { fontSize: '44px' } }, '❔')),
+        el('div', { class: 'row' }, el('h3', { class: 'grow' }, met ? r.name : '???'), st?.vip ? el('span', { class: 'chip good' }, '💳 VIP') : null),
+        el('div', { class: 'hearts', title: `${st?.love || 0}/100` }, '♥'.repeat(h) + '♡'.repeat(5 - h)),
+        h < 5 && met ? el('div', { class: 'bar' }, el('i', { style: { width: progress * 100 + '%' } })) : null,
+        el('p', {}, met ? r.bio : unlocked ? 'Hasn’t visited yet.' : `Shows up from level ${Math.max(2, CUSTOMERS[r.type].level)}${r.type === 'streamer' ? ' (needs a Streamer Pod)' : ''}.`),
+        met ? el('div', { class: 'stats' },
+          el('span', { class: 'chip' }, `❤️ ${ITEM[r.fav]?.name || r.fav}`),
+          el('span', { class: 'chip' + (st.wish ? ' good' : '') }, `${st.wish ? '✓' : '✨'} Wish: ${ITEM[r.wish]?.name || r.wish}`),
+          el('span', { class: 'chip' }, `${st.visits} visit${st.visits === 1 ? '' : 's'}`),
+          st.gift ? el('span', { class: 'chip good' }, '🎁 Gift received') : null) : null));
+    }
+    this.body.append(grid);
+  }
+
   private renderReviews() {
     const s = this.game.world.save;
     const list = s.reviews.slice().reverse();
@@ -211,7 +259,7 @@ export class Laptop {
     const line = (a: string, b: string) => el('div', { class: 'line' }, el('span', {}, a), el('b', { class: 'num' }, b));
     const power = sim ? Math.round(sim.power()) : 0, rent = sim ? sim.rent() : EXPANSIONS[s.expansion].rent, wages = sim ? sim.wages() : 0;
     this.body.append(el('div', { class: 'summary-grid' },
-      el('div', { class: 'col' }, el('h3', {}, `Today (day ${s.day})`), line('Sessions', `${t.sessions} · ${money(t.sessionRev)}`), line('Store sales', `${t.sales} items · ${money(t.salesRev)}`), line('Arcade & vending', money(t.arcadeRev)), line('Tips', money(t.tips)), line('Customers served', String(t.served)), line('Customers lost', String(t.lost)), line('Avg satisfaction', t.satN ? `${Math.round(t.satSum / t.satN)}%` : '—')),
-      el('div', { class: 'col' }, el('h3', {}, 'Tonight’s bills'), line('Rent', money(rent)), line('Electricity', money(power)), line('Salaries', money(wages)), line('Total', money(rent + power + wages)), el('h3', { style: { marginTop: '10px' } }, 'All time'), line('Revenue', money(s.lifetime.revenue)), line('Customers', String(s.lifetime.customers)), line('Days run', String(s.lifetime.days)))));
+      el('div', { class: 'col' }, el('h3', {}, `Today (day ${s.day})`), line('Sessions', `${t.sessions} · ${money(t.sessionRev)}`), line('Store sales', `${t.sales} items · ${money(t.salesRev)}`), line('Snack Bar', `${t.meals} snacks · ${money(t.foodRev)}`), line('Arcade & vending', money(t.arcadeRev)), line('Tips', money(t.tips)), line('Streams', String(t.streams)), line('Customers served', String(t.served)), line('Customers lost', String(t.lost)), line('Avg satisfaction', t.satN ? `${Math.round(t.satSum / t.satN)}%` : '—')),
+      el('div', { class: 'col' }, el('h3', {}, 'Tonight’s bills'), line('Rent', money(rent)), line('Electricity', money(power)), line('Salaries', money(wages)), line('Total', money(rent + power + wages)), el('h3', { style: { marginTop: '10px' } }, 'All time'), line('Revenue', money(s.lifetime.revenue)), line('Customers', String(s.lifetime.customers)), line('Sessions', String(s.lifetime.sessions)), line('Snacks served', String(s.lifetime.meals)), line('Streams', String(s.lifetime.streams)), line('Days run', String(s.lifetime.days)))));
   }
 }

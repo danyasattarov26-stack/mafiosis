@@ -10,7 +10,8 @@ import { CharView } from '../world/chars';
 import { buildObject, updateShelf, objKey, smoke, animateSmoke, type ObjView } from '../world/objects';
 import { productProto, spill, textCanvas } from '../world/props';
 import { footprint, counterSpots, DOOR } from '../sim/layout';
-import type { World, Customer } from '../sim/world';
+import { PLAYING, type World, type Customer } from '../sim/world';
+import { REGULAR, hearts } from '../config/npcs';
 import { damp, dampAngle } from '../core/util';
 
 interface CustEntry { v: CharView; tx: number; tz: number; ty: number; try: number; init: boolean }
@@ -149,6 +150,7 @@ export class View {
     // customers
     const cseen = new Set<string>();
     const occupied = new Set<string>();
+    const live = new Set<string>();
     for (const c of w.customers) {
       cseen.add(c.id);
       let e = this.custs.get(c.id);
@@ -157,12 +159,15 @@ export class View {
       const r = e.v.root;
       if (!e.init || w.isHost) { r.position.set(c.x, 0, c.z); r.rotation.y = c.ry; e.init = true; }
       else { r.position.x = damp(r.position.x, c.x, 10, dt); r.position.z = damp(r.position.z, c.z, 10, dt); r.rotation.y = dampAngle(r.rotation.y, c.ry, 10, dt); }
-      e.v.seatY = ITEM[w.obj(c.target || '')?.item || '']?.build === 'console' ? 0.42 : 0.5;
+      const build = ITEM[w.obj(c.target || '')?.item || '']?.build;
+      e.v.seatY = build === 'console' ? 0.42 : build === 'racing' ? 0.36 : 0.5;
       e.v.update(dt, c.anim, cam);
-      const warn = c.state === 'wait' || c.state === 'toWait';
+      const warn = c.state === 'wait' || c.state === 'toWait' || c.state === 'foodWait';
       e.v.setRing(c.progress, warn);
-      e.v.setBubble(c.bubble);
-      if (c.anim === 'play' && c.target) occupied.add(c.target);
+      e.v.setBubble(c.bubble, !!c.live || c.state === 'foodWait');
+      if (c.regular) { const r = REGULAR[c.regular], h = hearts(s.regulars[c.regular]?.love || 0); e.v.setLabel(`${s.regulars[c.regular]?.vip ? '💳 ' : ''}${r.name} ${'♥'.repeat(h)}`, '#ffd6e8'); }
+      if (PLAYING.has(c.anim) && c.target) occupied.add(c.target);
+      if (c.live && c.target) live.add(c.target);
       people.push(r.position);
     }
     for (const [id, e] of this.custs) if (!cseen.has(id)) { e.v.dispose(); this.custs.delete(id); }
@@ -220,6 +225,9 @@ export class View {
       if (v.neon) v.neon.color.setScalar(0.75 + this.gfx.night * 0.5 + Math.sin(this.time * 3 + id.length) * 0.05);
       if (v.lamp) (v.lamp as THREE.MeshStandardMaterial).emissiveIntensity = 0.4 + this.gfx.night * 1.6;
       if (v.glow) for (const g of v.glow as THREE.MeshStandardMaterial[]) g.emissiveIntensity = 1 + this.gfx.night * 1.5;
+      if (v.wheel) v.wheel.rotation.z = used ? Math.sin(this.time * 1.6) * 0.5 + Math.sin(this.time * 4.3) * 0.08 : v.wheel.rotation.z * 0.9;
+      if (v.onAir) v.onAir.emissiveIntensity = live.has(id) ? 1.6 + Math.sin(this.time * 6) * 0.3 : 0.12;
+      if (v.ringLight) v.ringLight.emissiveIntensity = used ? 2.2 : 0.3;
     }
     this.updateCounterItems();
     // door opens for anyone nearby

@@ -163,6 +163,7 @@ export function productProto(mesh: string, color = '#fff'): Proto {
     case 'mouse': p = colored([[new THREE.SphereGeometry(0.045, 10, 8).scale(0.75, 0.45, 1.2).translate(0, 0.02, 0), color], [B(0.004, 0.01, 0.03, 0, 0.036, -0.02), '#222']]); break;
     case 'headset': p = colored([[new THREE.TorusGeometry(0.08, 0.012, 6, 16, Math.PI).translate(0, 0.08, 0), color], [new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12).rotateZ(Math.PI / 2).translate(-0.08, 0.06, 0), '#222'], [new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12).rotateZ(Math.PI / 2).translate(0.08, 0.06, 0), '#222']]); break;
     case 'shirt': p = colored([[B(0.22, 0.04, 0.18), color], [B(0.08, 0.041, 0.06, 0, 0, 0.02), '#2b2d42']]); break;
+    case 'pizza-box': p = colored([[B(0.3, 0.042, 0.3), '#d4a373'], [B(0.16, 0.002, 0.16, 0, 0.042, 0), '#e63946'], [B(0.06, 0.003, 0.06, 0, 0.042, 0), '#ffd166']]); break;
   }
   if (!p) p = colored([[B(0.12, 0.12, 0.12), color]]);
   protos.set(key, p);
@@ -221,5 +222,47 @@ export function emojiTexture(e: string) {
   c.fillText(e, 32, 32);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
   emojiTex.set(e, t);
+  return t;
+}
+
+// ---------- studio & snack bar textures ----------
+/** acoustic foam: rows of shaded wedges */
+export function foamTexture(color = '#3a3450') {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const c = cv.getContext('2d')!;
+  const base = new THREE.Color(color);
+  const sh = (k: number) => '#' + base.clone().multiplyScalar(k).getHexString();
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+    const x0 = x * 16, y0 = y * 16, flip = (x + y) % 2;
+    c.fillStyle = sh(flip ? 1.25 : 0.8); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + 16, y0); c.lineTo(x0 + 8, y0 + 8); c.fill();
+    c.fillStyle = sh(flip ? 0.7 : 1.15); c.beginPath(); c.moveTo(x0, y0 + 16); c.lineTo(x0 + 16, y0 + 16); c.lineTo(x0 + 8, y0 + 8); c.fill();
+    c.fillStyle = sh(1); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + 8, y0 + 8); c.lineTo(x0, y0 + 16); c.fill();
+    c.fillStyle = sh(0.9); c.beginPath(); c.moveTo(x0 + 16, y0); c.lineTo(x0 + 8, y0 + 8); c.lineTo(x0 + 16, y0 + 16); c.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+/** glowing VR play-space grid */
+export function gridTexture(line = '#3ee6ff', bg = '#1b1f3a') {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = bg; c.fillRect(0, 0, 128, 128);
+  c.strokeStyle = line; c.globalAlpha = 0.5; c.lineWidth = 2;
+  for (let i = 0; i <= 128; i += 32) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, 128); c.stroke(); c.beginPath(); c.moveTo(0, i); c.lineTo(128, i); c.stroke(); }
+  c.globalAlpha = 1; c.lineWidth = 6; c.strokeRect(3, 3, 122, 122);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+/** snack bar menu board */
+export function menuBoard(lines: string[]) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  const c = cv.getContext('2d')!;
+  c.fillStyle = '#2b2d42'; c.fillRect(0, 0, 512, 256);
+  c.strokeStyle = '#ffd166'; c.lineWidth = 8; c.strokeRect(6, 6, 500, 244);
+  c.fillStyle = '#ffd166'; c.font = '800 54px "Baloo 2", "Trebuchet MS", system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('SNACK BAR', 256, 50);
+  c.fillStyle = '#fff'; c.font = '700 36px "Baloo 2", "Trebuchet MS", system-ui, sans-serif';
+  lines.forEach((l, i) => c.fillText(l, 256, 112 + i * 46));
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

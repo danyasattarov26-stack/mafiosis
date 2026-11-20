@@ -29,18 +29,28 @@ and grow a tiny laptop corner into the best LAN café in the city.
    Carry a stock box to a shelf and hold **E** to fill it, set prices on the laptop, then serve customers at the
    register: click items to **scan** them, then charge the **card** or count out the **change**.
 5. At **22:00** the shop closes and you get the **end-of-day summary** (income, rent, electricity, salaries, reviews).
+6. Every morning brings **three daily goals** (top-left). Finish them for cash and XP; the laptop's **Goals** tab also
+   lists the achievements.
 
 ## Features
 
 - **Two sections:** a gaming floor (laptops, three PC tiers, console couches, arcade cabinets, pinball, claw and dance
-  machines) and a store (shelves, island shelves, drinks fridge, checkout counter, 10 products).
+  machines) and a store (shelves, island shelves, drinks fridge, checkout counter, 11 products).
+- **Special stations:** a cheap **Retro PC** (beige box and a CRT), a soundproof **Streamer Pod** where streamers go
+  live, shout at chat and bring their viewers, a **Sim Racing Rig** with a wheel, pedals and three screens, and a
+  **VR Station** where players flail around on a glowing mat.
+- **Snack Bar:** customers order pizza, noodles or slushies. Hold **E** to make the order at the head of the line, or
+  hire a **Cook**. Stock it with Food Supplies boxes; the Food Supplies price on the laptop scales the menu prices.
+- **Regulars & VIPs:** eight named regulars with favourite items and wishes. Happy visits earn hearts: at 3 hearts they
+  buy a **VIP membership**, at 5 they bring you a gift.
+- **Daily goals & achievements:** three new goals each morning with cash and XP rewards, and 23 achievements.
 - **Station upgrades:** monitors, gaming chairs and desks install onto stations and change price, comfort and looks.
 - **Five customer types** (casual, kids, pro gamers, big spenders, troublemakers) unlocked by shop level, each with its
   own wants, budgets and behaviour. Troublemakers litter, spill, kick machines and try to **steal**. Press **E** on a running
   thief to catch them.
 - **Satisfaction & reviews:** waits, setup quality, comfort, cleanliness, prices and decor feed each customer's score;
   reviews set your star rating and your rating sets how many people walk in.
-- **Staff:** cleaners, cashiers, restockers and technicians, each with a salary and real AI (pathfinding, carrying boxes,
+- **Staff:** cleaners, cashiers, restockers, cooks and technicians, each with a salary and real AI (pathfinding, carrying boxes,
   running a register, repairing broken PCs).
 - **Upkeep:** trash, spills, breakdowns, rent, electricity and salaries.
 - **Growth:** money, XP and levels, unlocks, licenses, **perks** chosen on level-up, five lot sizes, floor, wall and light
@@ -89,7 +99,8 @@ src/ui/              hud.ts, laptop.ts (ShopOS), panels.ts (inventory, register,
 
 - **New item:** add an entry to `ITEMS` in `src/config/items.ts` (price, level, licence, kind, footprint, stats).
   It appears in the laptop shop, inventory, placement and the simulation automatically.
-- **New customer type:** add it to `CUSTOMERS` in `src/config/npcs.ts`.
+- **New customer type:** add it to `CUSTOMERS` in `src/config/npcs.ts`. Regulars are `REGULARS` in the same file.
+- **Goals & achievements:** `GOALS` and `ACHIEVEMENTS` in `src/config/goals.ts`.
 - **Balance:** `ECON`, `PERKS`, `LICENSES`, `STAFF`, `EXPANSIONS` and the style lists in `src/config/economy.ts`.
 - **Save format change:** bump `SAVE_VERSION` in `src/core/save.ts` and add a migration step. Old local and cloud saves
   upgrade on load.

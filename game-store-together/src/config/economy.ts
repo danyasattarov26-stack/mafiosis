@@ -18,7 +18,7 @@ export const ECON = {
 
 export const xpForLevel = (level: number) => Math.round(80 * Math.pow(level, 1.45));
 
-export const XP = { session: 6, arcade: 3, sale: 2, clean: 2, repair: 5, review5: 6, review4: 3, restock: 0.25, catchThief: 10 };
+export const XP = { meal: 3, goal: 25, session: 6, arcade: 3, sale: 2, clean: 2, repair: 5, review5: 6, review4: 3, restock: 0.25, catchThief: 10 };
 
 export interface Perk { id: string; name: string; desc: string; icon: string }
 export const PERKS: Perk[] = [
@@ -45,12 +45,13 @@ export const LICENSES: License[] = [
   { id: 'premium', name: 'Premium Partner', price: 900, level: 5, desc: 'Unlocks the RGB Beast PC.' },
 ];
 
-export type Role = 'cashier' | 'restocker' | 'cleaner' | 'technician';
+export type Role = 'cashier' | 'restocker' | 'cleaner' | 'technician' | 'cook';
 export interface StaffRole { id: Role; name: string; wage: number; level: number; icon: string; desc: string; shirt: string }
 export const STAFF: StaffRole[] = [
   { id: 'cleaner', name: 'Cleaner', wage: 30, level: 2, icon: '🧽', desc: 'Picks up trash and mops spills.', shirt: '#4cc9f0' },
   { id: 'cashier', name: 'Cashier', wage: 45, level: 3, icon: '🧾', desc: 'Runs a checkout counter for you.', shirt: '#f72585' },
   { id: 'restocker', name: 'Restocker', wage: 40, level: 3, icon: '📦', desc: 'Carries stock boxes to empty shelves.', shirt: '#ffb703' },
+  { id: 'cook', name: 'Cook', wage: 40, level: 3, icon: '🧑‍🍳', desc: 'Makes Snack Bar orders.', shirt: '#ef476f' },
   { id: 'technician', name: 'Technician', wage: 55, level: 4, icon: '🔧', desc: 'Repairs broken stations.', shirt: '#80ed99' },
 ];
 export const MAX_STAFF_PER_ROLE = 3;

@@ -228,3 +228,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .register { bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- goals, achievements, regulars ---------- */
+.goals-hud { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.goals-hud > div { max-width: min(330px, 60vw); }
+.goals-hud > div { box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 6px; background: rgba(255, 248, 231, .9); border: 2px solid var(--ink); border-radius: 10px; padding: 2px 8px; font-size: 12.5px; font-weight: 800; color: var(--ink); }
+.goals-hud .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goals-hud .done { background: rgba(216, 248, 223, .92); color: #1b7a3d; }
+.goals-hud .done .t { text-decoration: line-through; opacity: .75; }
+.card .bar { height: 8px; border-radius: 99px; background: #efe7d6; overflow: hidden; border: 1px solid #d9ccb2; }
+.card .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd166, #ff7a59); }
+.card.goal.done, .card.ach.done { background: #f2fff4; }
+.card.ach.locked { opacity: .7; }
+.goal-icon { font-size: 26px; line-height: 1; }
+.card .hearts { color: #ff4f8b; font-size: 20px; letter-spacing: 2px; }
+.card.regular .thumb { height: 140px; }
+@media (max-width: 760px), (max-height: 500px) {
+  .goals-hud > div { font-size: 10.5px; padding: 1px 6px; border-width: 1.5px; max-width: 58vw; }
+}
+.goals-hud[hidden] { display: none; }

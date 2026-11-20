@@ -4,7 +4,8 @@ import type { CustomerType } from '../config/npcs';
 import { Emitter } from '../core/util';
 import { Nav } from './nav';
 
-export type Anim = 'walk' | 'run' | 'idle' | 'sit' | 'play' | 'work' | 'carry';
+export type Anim = 'walk' | 'run' | 'idle' | 'sit' | 'play' | 'work' | 'carry' | 'drive' | 'vr' | 'eat';
+export const PLAYING: ReadonlySet<string> = new Set(['play', 'drive', 'vr']);
 export interface CartItem { p: string; price: number }
 
 export interface Customer {
@@ -20,6 +21,9 @@ export interface Customer {
   bubble: string;
   queueAt: string | null;
   after: string | null;            // what to do once the current walk ends
+  order: string | null;            // snack bar meal they're waiting for
+  regular: string | null;          // named regular id
+  live?: boolean;                  // streaming right now
 }
 
 export interface StaffNpc {
@@ -47,6 +51,7 @@ export interface WorldEvents {
   toast: { msg: string; to?: string; kind?: 'good' | 'bad' | 'info' };
   review: Review;
   levelup: { level: number; unlocks: string[] };
+  goal: { icon: string; text: string; money: number; xp: number; kind: 'goal' | 'achievement' };
   dayover: DaySummary;
 }
 

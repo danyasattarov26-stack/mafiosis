@@ -85,8 +85,8 @@ class SupaTransport implements Transport {
 }
 
 // ---- compact encodings for the frequent messages ----
-const encC = (c: Customer) => [c.id, c.model, c.tint, +c.x.toFixed(2), +c.z.toFixed(2), +c.ry.toFixed(2), c.anim, +c.progress.toFixed(2), c.bubble, c.state, c.target, c.seat, c.queueAt, c.scanned, c.cart, c.pay, c.given, c.type];
-const decC = (a: any[]): Customer => ({ id: a[0], model: a[1], tint: a[2], x: a[3], z: a[4], y: 0, ry: a[5], anim: a[6], progress: a[7], bubble: a[8], state: a[9], target: a[10], seat: a[11], queueAt: a[12], scanned: a[13], cart: a[14] || [], pay: a[15], given: a[16], type: a[17], t: 0, tMax: 0, patience: 0, path: [], speed: 0, plan: [], sat: 70, reasons: [], after: null });
+const encC = (c: Customer) => [c.id, c.model, c.tint, +c.x.toFixed(2), +c.z.toFixed(2), +c.ry.toFixed(2), c.anim, +c.progress.toFixed(2), c.bubble, c.state, c.target, c.seat, c.queueAt, c.scanned, c.cart, c.pay, c.given, c.type, c.order, c.regular, c.live ? 1 : 0];
+const decC = (a: any[]): Customer => ({ id: a[0], model: a[1], tint: a[2], x: a[3], z: a[4], y: 0, ry: a[5], anim: a[6], progress: a[7], bubble: a[8], state: a[9], target: a[10], seat: a[11], queueAt: a[12], scanned: a[13], cart: a[14] || [], pay: a[15], given: a[16], type: a[17], order: a[18] ?? null, regular: a[19] ?? null, live: !!a[20], t: 0, tMax: 0, patience: 0, path: [], speed: 0, plan: [], sat: 70, reasons: [], after: null });
 const encS = (s: StaffNpc) => [s.id, s.role, s.name, s.body, +s.x.toFixed(2), +s.z.toFixed(2), +s.ry.toFixed(2), s.anim, s.carry];
 const decS = (a: any[]): StaffNpc => ({ id: a[0], role: a[1], name: a[2], body: a[3], x: a[4], z: a[5], ry: a[6], anim: a[7], carry: a[8], state: '', t: 0, path: [], task: null, counter: null });
 

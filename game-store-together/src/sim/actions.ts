@@ -41,6 +41,7 @@ export type Action =
   | { t: 'license'; id: string }
   | { t: 'perk'; id: string }
   | { t: 'catch'; cust: string }
+  | { t: 'cook'; obj: string }
   | { t: 'nextDay' }
   | { t: 'cheat'; what: string; n?: number };
 
@@ -108,7 +109,7 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       const o: any = { id: uid('o'), item: a.item, x: a.x, z: a.z, rot: a.rot & 3 };
       if (a.wall) { o.wall = true; o.y = a.y ?? 1.8; }
       if (d.kind === 'station') { o.mon = 0; o.chair = 0; o.desk = 0; o.sessions = 0; }
-      if (d.kind === 'shelf' || d.kind === 'fridge') { o.product = null; o.stock = 0; }
+      if (d.kind === 'shelf' || d.kind === 'fridge' || d.kind === 'foodbar') { o.product = null; o.stock = 0; }
       s.objects.push(o);
       w.bump();
       return ok();
@@ -157,6 +158,8 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       if (sd?.kind !== 'station') return no('Install it on a gaming station');
       if (d.slot === 'mon' && (sd.build !== 'station' || sd.tier === 0)) return no('Laptops can’t take a monitor');
       if (sd.build === 'console' && d.slot !== 'chair') return no('Consoles only take chair upgrades');
+      if (sd.build === 'racing' || sd.build === 'vr') return no(`The ${sd.name} comes fully kitted`);
+      if (sd.kitted && d.slot !== 'chair') return no(`The ${sd.name} only takes chair upgrades`);
       if (!(s.inventory[a.item] > 0)) return no('Not in your inventory');
       if (inUse(w, o.id)) return no('Someone is using it');
       const slot = d.slot!;
@@ -195,7 +198,7 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       if (!b || !o || b.carrier !== by) return no('Carry a stock box first');
       const sd = ITEM[o.item], pd = ITEM[b.item];
       if (!pd?.product || b.empty || b.count <= 0) return no('The box is empty');
-      if (sd.accepts !== pd.product.place) return no(pd.product.place === 'fridge' ? 'Drinks go in a fridge' : 'This goes on a shelf');
+      if (sd.accepts !== pd.product.place) return no(placeHint(pd.product.place));
       if (o.product && o.product !== b.item && (o.stock || 0) > 0) return no('This shelf holds ' + ITEM[o.product].name);
       if ((o.stock || 0) >= (sd.capacity || 0)) return no('Shelf is full');
       o.product = b.item; o.stock = (o.stock || 0) + 1; b.count--;
@@ -227,14 +230,14 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
     }
     case 'clean': {
       const ti = s.trash.findIndex(t => t.id === a.id);
-      if (ti >= 0) { s.trash.splice(ti, 1); sim?.addXp(XP.clean); w.bump(); return ok(); }
+      if (ti >= 0) { s.trash.splice(ti, 1); s.today.cleaned++; s.lifetime.cleaned++; sim?.addXp(XP.clean); w.bump(); return ok(); }
       const b = w.box(a.id);
       if (b && b.empty && !b.carrier) { s.boxes.splice(s.boxes.indexOf(b), 1); w.bump(); return ok(); }
       return no('Already clean');
     }
     case 'repair': {
       const o = w.obj(a.id); if (!o || !o.broken) return no('Not broken');
-      o.broken = false; sim?.addXp(XP.repair); w.bump();
+      o.broken = false; s.today.repaired++; sim?.addXp(XP.repair); w.bump();
       return ok('🔧 Fixed!');
     }
     case 'scan': {
@@ -331,6 +334,14 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
       sim?.catchThief(c);
       return ok();
     }
+    case 'cook': {
+      const o = w.obj(a.obj); if (!o || ITEM[o.item]?.kind !== 'foodbar') return no('Not a snack bar');
+      if (o.broken) return no('Repair it first');
+      if (!(o.stock || 0)) return no('Out of food supplies');
+      if (!sim?.foodHead(o.id)) return no('Nobody is waiting');
+      sim.serveMeal(o.id);
+      return ok();
+    }
     case 'nextDay': sim?.nextDay(); return ok();
     case 'cheat': {
       if (a.what === 'money') s.money += a.n || 1000;
@@ -347,6 +358,8 @@ export function applyAction(w: World, sim: Sim | null, a: Action, by: string): R
   }
   return no('Unknown action');
 }
+
+export const placeHint = (place: string) => place === 'fridge' ? 'Drinks go in a fridge' : place === 'foodbar' ? 'Food supplies go in the Snack Bar' : 'This goes on a shelf';
 
 export function inUse(w: World, id: string) {
   if ((w.seatUse.get(id) || []).some(Boolean)) return true;

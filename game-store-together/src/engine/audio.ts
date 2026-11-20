@@ -1,7 +1,7 @@
 /* Sound: Kenney CC0 samples from Patch's library + a few synthesized blips, and a lo-fi music loop. */
 import { settings } from '../core/settings';
 
-type Sfx = 'click' | 'coins' | 'coinsBig' | 'step' | 'stepCarpet' | 'chime' | 'glass' | 'back' | 'beep' | 'error' | 'levelup' | 'thud' | 'place' | 'pickup' | 'cash' | 'door' | 'repair' | 'sweep' | 'pop';
+type Sfx = 'click' | 'coins' | 'coinsBig' | 'step' | 'stepCarpet' | 'chime' | 'glass' | 'back' | 'beep' | 'error' | 'levelup' | 'thud' | 'place' | 'pickup' | 'cash' | 'door' | 'repair' | 'sweep' | 'pop' | 'shout' | 'scream' | 'ding' | 'cheer';
 const FILES: Partial<Record<Sfx, string>> = { click: 'click_001', coins: 'handleCoins2', coinsBig: 'handleCoins', step: 'footstep_concrete_000', stepCarpet: 'footstep_carpet_000', chime: 'bong_001', glass: 'glass_001', back: 'back_001' };
 
 class Audio {
@@ -80,6 +80,17 @@ class Audio {
     n.buffer = b; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq; const g = c.createGain(); g.gain.value = vol;
     n.connect(f); f.connect(g); g.connect(out); n.start(c.currentTime + t0);
   }
+  /** a muffled voice: sawtooth through two formant filters, gliding through the given pitches */
+  private voice(out: AudioNode, pitches: number[], dur: number, vol: number, vibrato = 0) {
+    const c = this.ctx!, t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sawtooth';
+    pitches.forEach((f, i) => o.frequency.linearRampToValueAtTime(f, t + (i / Math.max(1, pitches.length - 1)) * dur));
+    if (vibrato) { const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = vibrato; lg.gain.value = 18; lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(t + dur + 0.05); }
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.04); g.gain.setValueAtTime(vol, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const [f, q, k] of [[750, 6, 1], [1250, 8, 0.6], [2600, 10, 0.25]]) { const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q; const gg = c.createGain(); gg.gain.value = k * 2.2; o.connect(bp); bp.connect(gg); gg.connect(g); }
+    g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+  }
   private synth(name: Sfx, out: AudioNode, r: number) {
     switch (name) {
       case 'beep': this.tone(out, 'square', 1850 * r, 1850 * r, 0, 0.09, 0.12); break;
@@ -93,6 +104,10 @@ class Audio {
       case 'repair': for (let i = 0; i < 3; i++) this.noise(out, i * 0.12, 0.06, 0.25, 2500); break;
       case 'sweep': this.noise(out, 0, 0.35, 0.18, 1600); break;
       case 'pop': this.tone(out, 'sine', 600, 900, 0, 0.07, 0.15); break;
+      case 'shout': this.voice(out, [180 * r, 260 * r, 170 * r], 0.32, 0.22); break;
+      case 'scream': this.voice(out, [420 * r, 760 * r, 620 * r, 820 * r], 0.62, 0.2, 7); break;
+      case 'ding': this.tone(out, 'sine', 2093, 2093, 0, 0.6, 0.18); this.tone(out, 'sine', 2637, 2637, 0.02, 0.5, 0.08); break;
+      case 'cheer': [659, 784, 988, 1318].forEach((f, i) => this.tone(out, 'triangle', f, f, i * 0.07, 0.22, 0.16)); this.noise(out, 0.1, 0.35, 0.06, 5000); break;
       default: this.tone(out, 'sine', 800, 800, 0, 0.06, 0.1);
     }
   }

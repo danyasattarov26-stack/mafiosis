@@ -3,7 +3,7 @@
   interaction rules ("what does E do when I look at this?"). UI panels hook in through `ui`.
 */
 import * as THREE from 'three';
-import { ITEM } from '../config/items';
+import { ITEM, MEAL } from '../config/items';
 import { ECON } from '../config/economy';
 import { SAVE_VERSION, saveLocal, type SaveData } from '../core/save';
 import { money as $m } from '../core/util';
@@ -12,7 +12,7 @@ import { input } from '../engine/input';
 import { audio } from '../engine/audio';
 import { World } from '../sim/world';
 import { Sim } from '../sim/sim';
-import { applyAction, inUse, type Action, type Result } from '../sim/actions';
+import { applyAction, inUse, placeHint, type Action, type Result } from '../sim/actions';
 import { counterSpots, useSpots, dist } from '../sim/layout';
 import { View } from './view';
 import { Player } from './player';
@@ -25,7 +25,7 @@ export type Mode = 'walk' | 'place' | 'install' | 'register' | 'ui';
 interface Opt { key: '' | 'E' | 'F' | 'G' | 'Q' | 'Hold E' | 'Hold F'; text: string; run?: () => void; hold?: number; warn?: boolean }
 
 export interface UiHooks {
-  openLaptop(): void;
+  openLaptop(tab?: string): void;
   openInventory(): void;
   openPause(): void;
   register(show: boolean): void;
@@ -99,6 +99,7 @@ export class Game {
     w.ev.on('review', r => { this.hud.toast(`${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)} “${r.text}” — ${r.who}`, r.stars >= 4 ? 'good' : r.stars <= 2 ? 'bad' : 'info', 4200); coop.broadcastEvent('review', r); });
     w.ev.on('levelup', e => { audio.play('levelup'); this.ui?.levelUp(e.level, e.unlocks); coop.broadcastEvent('levelup', e); this.persist(true); });
     w.ev.on('dayover', s => { this.ui?.dayOver(s); coop.broadcastEvent('dayover', s); this.persist(true); });
+    w.ev.on('goal', g => { this.goalToast(g); coop.broadcastEvent('goal', g); });
     w.ev.on('changed', () => { this.dirtyCloud = true; });
   }
 
@@ -110,6 +111,12 @@ export class Game {
     if (type === 'review') this.hud.toast(`${'★'.repeat(d.stars)} “${d.text}”`, d.stars >= 4 ? 'good' : 'info', 4000);
     if (type === 'levelup') { audio.play('levelup'); this.ui?.levelUp(d.level, d.unlocks); }
     if (type === 'dayover') this.ui?.dayOver(d);
+    if (type === 'goal') this.goalToast(d);
+  }
+  private goalToast(g: { icon: string; text: string; money: number; xp: number; kind: string }) {
+    audio.play('cheer');
+    const reward = [g.money ? `+${$m(g.money)}` : '', g.xp ? `+${g.xp} XP` : ''].filter(Boolean).join(' · ');
+    this.hud.toast(`${g.kind === 'achievement' ? '🏆 Achievement unlocked' : '🎯 Goal complete'}: ${g.icon} ${g.text}${reward ? ' — ' + reward : ''}`, 'good', 4500);
   }
 
   /** host side: apply an action that came from a guest */
@@ -251,12 +258,12 @@ export class Game {
         if (ob.broken) { o.push({ key: 'Hold E', text: `Repair ${d.name}`, hold: 2.5 * quick, warn: true, run: () => this.act({ t: 'repair', id: ob.id }).then(r => r.ok && audio.play('repair')) }); }
         else if (this.mode === 'install' && this.holding) {
           o.push({ key: 'E', text: `Install ${ITEM[this.holding].name}`, run: () => this.act({ t: 'install', id: ob.id, item: this.holding! }).then(r => { if (r.ok) { audio.play('place'); if (!(s.inventory[this.holding!] > 0)) { this.holding = null; this.mode = 'walk'; } } }) });
-        } else if (cb && (d.kind === 'shelf' || d.kind === 'fridge')) {
+        } else if (cb && (d.kind === 'shelf' || d.kind === 'fridge' || d.kind === 'foodbar')) {
           const pd = ITEM[cb.item]?.product;
           const left = (d.capacity || 0) - (ob.stock || 0);
           if (cb.empty) o.push({ key: 'F', text: ob.stock ? `Take back ${ITEM[ob.product!].name}` : 'Shelf is empty', run: () => this.act({ t: 'unstock', obj: ob.id }, true) });
           else if (!pd) o.push({ key: '', text: 'Unbox furniture with F first', warn: true });
-          else if (pd.place !== d.accepts) o.push({ key: '', text: pd.place === 'fridge' ? 'Drinks go in a fridge' : 'This goes on a shelf', warn: true });
+          else if (pd.place !== d.accepts) o.push({ key: '', text: placeHint(pd.place), warn: true });
           else if (ob.product && ob.product !== cb.item && (ob.stock || 0) > 0) o.push({ key: '', text: `Holds ${ITEM[ob.product].name} — empty it first`, warn: true });
           else if (left <= 0) o.push({ key: '', text: 'Shelf is full', warn: true });
           else o.push({ key: 'E', text: `Restock (${cb.count} in box · ${left} space) — hold to fill`, run: () => this.act({ t: 'stock', box: cb.id, obj: ob.id }, true).then(r => { if (r.ok) audio.play('place', { vol: 0.5 }); else if (r.msg) this.hud.toast(r.msg, 'bad'); }) });
@@ -265,6 +272,16 @@ export class Game {
           o.push({ key: 'E', text: cb.empty ? 'Throw empty box away' : 'Only empty boxes go in the bin', warn: !cb.empty, run: cb.empty ? () => this.act({ t: 'binBox', box: cb.id }, true).then(r => r.ok && audio.play('thud')) : undefined });
         } else if (cb) {
           o.push({ key: 'E', text: 'Put box down', run: () => this.dropCarried() });
+        } else if (d.kind === 'foodbar') {
+          const head = w.customers.find(c => c.queueAt === ob.id && c.state === 'foodWait' && c.order);
+          const meal = head?.order ? MEAL[head.order] : null;
+          o.push({ key: '', text: `Snack Bar · 🍕 ${ob.stock || 0}/${d.capacity} meals${(w.queues.get(ob.id)?.length || 0) > 1 ? ` · ${w.queues.get(ob.id)!.length} in line` : ''}` });
+          if (meal && !(ob.stock || 0)) o.push({ key: '', text: 'Out of food — order Food Supplies on the laptop', warn: true });
+          else if (meal) o.push({ key: 'Hold E', text: `Make ${meal.emoji} ${meal.name}`, hold: meal.secs * quick, run: () => this.act({ t: 'cook', obj: ob.id }).then(r => { if (r.ok) audio.play('ding'); else if (r.msg) this.hud.toast(r.msg, 'bad'); }) });
+          else o.push({ key: '', text: (ob.stock || 0) ? 'No orders right now' : 'Empty — bring a Food Supplies box' });
+          const busy = inUse(w, ob.id);
+          o.push({ key: 'F', text: `Move ${d.name}`, run: busy ? undefined : () => this.startMove(ob.id) });
+          o.push({ key: 'Hold F', text: `Sell for ${$m(Math.round(d.price * ECON.sellBack))}`, hold: 1.0, run: busy ? undefined : () => this.act({ t: 'sell', id: ob.id }).then(r => r.ok && audio.play('coins')) });
         } else {
           if (d.kind === 'counter') o.push({ key: 'E', text: 'Use the register', run: () => this.enterRegister(ob.id) });
           const busy = inUse(w, ob.id);

@@ -1,6 +1,7 @@
 /* Minimal HUD: money, level, clock, open sign, rating, co-op peers, crosshair, prompts, hold ring, toasts, hints. */
 import { el, money, clock, esc } from '../core/util';
 import { xpForLevel } from '../config/economy';
+import { GOAL } from '../config/goals';
 import type { SaveData } from '../core/save';
 
 export interface PromptLine { key: string; text: string; warn?: boolean }
@@ -10,7 +11,7 @@ export class Hud {
   private moneyEl: HTMLElement; private lvlEl: HTMLElement; private xpEl: HTMLElement; private clockEl: HTMLElement; private openEl: HTMLElement;
   private ratingEl: HTMLElement; private peersEl: HTMLElement; private cross: HTMLElement; private promptEl: HTMLElement;
   private holdEl: HTMLCanvasElement; private toastsEl: HTMLElement; private hintEl: HTMLElement; private carryEl: HTMLElement; private fpsEl: HTMLElement;
-  private visitEl: HTMLElement;
+  private visitEl: HTMLElement; private goalsEl: HTMLElement;
   private lastPrompt = '';
   private lastMoney = NaN;
 
@@ -30,12 +31,13 @@ export class Hud {
     this.carryEl = el('div', { class: 'carry' }); this.carryEl.hidden = true;
     this.fpsEl = el('div', { class: 'fps' });
     this.visitEl = el('div', { class: 'pill', style: { background: '#e9e6f5' } }); this.visitEl.hidden = true;
+    this.goalsEl = el('div', { class: 'goals-hud' });
     this.root = el('div', { class: 'hud' },
       el('div', { class: 'hud-top' },
         el('div', { class: 'pill' }, '💰', this.moneyEl),
         el('div', { class: 'pill' }, '⭐', this.lvlEl, el('div', { class: 'xp' }, this.xpEl)),
         el('div', { class: 'pill' }, '🕒', this.clockEl),
-        this.openEl, this.visitEl),
+        this.openEl, this.visitEl, this.goalsEl),
       el('div', { class: 'hud-right' }, this.ratingEl, this.peersEl),
       this.cross, this.holdEl, this.promptEl, this.toastsEl, this.hintEl, this.carryEl, this.fpsEl);
     // the HUD never blocks touches to the game; only buttons inside toasts (invites) are clickable
@@ -51,6 +53,7 @@ export class Hud {
       this.moneyEl.style.color = s.money < 0 ? '#c1121f' : '';
     }
     this.lvlEl.textContent = `Lv ${s.level}`;
+    this.goals(s);
     this.xpEl.style.width = Math.min(100, (s.xp / xpForLevel(s.level)) * 100) + '%';
     this.clockEl.textContent = `Day ${s.day} · ${clock(s.time)}`;
     const open = s.open;
@@ -64,6 +67,16 @@ export class Hud {
       const cols = ['#ff7a59', '#3ee6ff', '#80ed99', '#ff4fd8'];
       if (peers.length > 1) peers.forEach((p, i) => this.peersEl.append(el('span', { title: p.name, style: { background: cols[i % 4] } }, (p.host ? '👑' : '') || p.name.slice(0, 1).toUpperCase())));
     }
+  }
+
+  /** today's goals, top-left under the pills */
+  private goals(s: SaveData) {
+    const rows = (s.goals || []).map(g => { const d = GOAL[g.id]; return d ? { icon: d.icon, text: d.text(g.target), n: Math.min(g.target, Math.floor(d.stat(s.today))), t: g.target, done: g.done } : null; }).filter(Boolean) as { icon: string; text: string; n: number; t: number; done: boolean }[];
+    const key = rows.map(r => r.text + r.n + r.done).join('|');
+    if (this.goalsEl.dataset.k === key) return;
+    this.goalsEl.dataset.k = key;
+    this.goalsEl.hidden = !rows.length;
+    this.goalsEl.innerHTML = rows.map(r => `<div class="${r.done ? 'done' : ''}"><span>${r.icon}</span><span class="t">${esc(r.text)}</span><b class="num">${r.done ? '✓' : `${r.n}/${r.t}`}</b></div>`).join('');
   }
 
   setVisit(text: string | null) { this.visitEl.hidden = !text; if (text) this.visitEl.textContent = text; }
