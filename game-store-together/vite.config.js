@@ -21,8 +21,15 @@ function localApi() {
   return { name: 'local-api', configureServer(s) { s.middlewares.use(handle); }, configurePreviewServer(s) { s.middlewares.use(handle); } };
 }
 
+// Build id baked into the app and written to /version.json, so open games can tell a newer version is live.
+const BUILD = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || 'dev-' + Date.now().toString(36);
+function versionFile() {
+  return { name: 'version-file', generateBundle() { this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD }) }); } };
+}
+
 export default defineConfig({
-  plugins: [localApi()],
+  plugins: [localApi(), versionFile()],
+  define: { __BUILD__: JSON.stringify(BUILD) },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500, assetsInlineLimit: 0 },
   server: { host: true },
 });

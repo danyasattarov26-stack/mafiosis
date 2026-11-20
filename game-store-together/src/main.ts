@@ -7,7 +7,7 @@ import { audio } from './engine/audio';
 import { preload, ALL_MODELS } from './engine/assets';
 import { settings, preset } from './core/settings';
 import { newSave, loadLocal, saveLocal, hasLocal, migrate, SAVE_VERSION, type SaveData } from './core/save';
-import { el } from './core/util';
+import { el, BUILD } from './core/util';
 import { Game } from './game/game';
 import { Laptop } from './ui/laptop';
 import { Inventory, Register, Debug, daySummary, levelUp } from './ui/panels';
@@ -85,7 +85,25 @@ async function boot() {
     resume: () => { paused = false; game.mode = 'walk'; input.enabled = true; resumeIfNeeded(); },
     inGame: () => game.running,
     isAway: () => coop.role === 'guest' || game.readOnly,
+    reload: () => reloadGame(),
   });
+
+  // ---------- updates: notice a newer deploy and offer a reload (phones keep tabs open for days) ----------
+  function reloadGame() { try { if (game.running) game.persist(true); } catch { /* ignore */ } setTimeout(() => location.reload(), 300); }
+  let updateShown = false;
+  async function checkUpdate() {
+    if (updateShown || BUILD.startsWith('dev')) return;
+    try {
+      const v = await (await fetch('/version.json', { cache: 'no-store' })).json();
+      if (!v.build || v.build === BUILD) return;
+      updateShown = true;
+      if (!game.running) { reloadGame(); return; }
+      game.hud.toast('✨ A new version of the game is ready!', 'info', 600000, [{ label: 'Reload now', fn: reloadGame }]);
+    } catch { /* offline */ }
+  }
+  setInterval(checkUpdate, 90_000);
+  addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+  setTimeout(checkUpdate, 5000);
 
   game.ui = {
     openLaptop: () => { openUi(); laptop.show(); },

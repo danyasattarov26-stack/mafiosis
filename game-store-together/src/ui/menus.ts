@@ -1,6 +1,6 @@
 /* Main menu, pause menu, settings, friends & invites, join, character creator, welcome and credits. */
 import * as THREE from 'three';
-import { el, esc, isTouch } from '../core/util';
+import { el, esc, isTouch, BUILD } from '../core/util';
 import { settings, saveSettings, type Quality } from '../core/settings';
 import { audio } from '../engine/audio';
 import { input } from '../engine/input';
@@ -28,6 +28,7 @@ export interface MenuActions {
   applySettings(): void;
   resume(): void;
   inGame(): boolean;
+  reload(): void;
   isAway(): boolean;
 }
 
@@ -236,7 +237,9 @@ export class Menus {
         el('button', { class: 'btn', onclick: () => this.creator() }, '🧢 Character'),
         el('button', { class: 'btn', onclick: () => this.settings() }, '⚙️ Settings'),
         away ? el('button', { class: 'btn sun', onclick: () => { this.hidePause(); this.a.goHome(); } }, '🏠 Go home') : null,
-        el('button', { class: 'btn ghost', onclick: () => { this.hidePause(); this.a.quitToMenu(); } }, away ? 'Leave to main menu' : '💾 Save & quit to menu'))));
+        el('button', { class: 'btn ghost', onclick: () => { this.hidePause(); this.a.quitToMenu(); } }, away ? 'Leave to main menu' : '💾 Save & quit to menu'),
+        el('button', { class: 'btn small ghost', onclick: () => this.a.reload() }, '🔄 Reload game'),
+        el('p', { class: 'muted', style: { fontSize: '12px', margin: '4px 0 0' } }, `Version ${BUILD}`))));
     this.pause.addEventListener('keydown', e => { if (e.key === 'Escape') { this.hidePause(); this.a.resume(); } });
     ui().appendChild(this.pause);
     (this.pause.querySelector('.btn') as HTMLElement)?.focus();

@@ -68,3 +68,6 @@ export function store<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? { ...fallback, ...JSON.parse(v) } : fallback; } catch { return fallback; }
 }
 export function storeSet(key: string, v: any) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage full or blocked */ } }
+
+declare const __BUILD__: string;
+export const BUILD: string = typeof __BUILD__ === 'string' ? __BUILD__ : 'dev';
