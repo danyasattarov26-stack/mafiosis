@@ -5,6 +5,7 @@ export class Audio {
   private eng: { o1: OscillatorNode; o2: OscillatorNode; f: BiquadFilterNode; g: GainNode } | null = null;
   private squeal: { f: BiquadFilterNode; g: GainNode } | null = null;
   private wind: { f: BiquadFilterNode; g: GainNode } | null = null;
+  private jetN: { f: BiquadFilterNode; g: GainNode } | null = null;
   private noise!: AudioBuffer;
   volume = 0.8;
   private lastHit = 0;
@@ -24,6 +25,7 @@ export class Audio {
     o1.start(); o2.start(); this.eng = { o1, o2, f, g };
     this.squeal = this.loopNoise('bandpass', 1100, 6);
     this.wind = this.loopNoise('lowpass', 500, 0.7);
+    this.jetN = this.loopNoise('lowpass', 380, 1.2);
   }
   private loopNoise(type: BiquadFilterType, freq: number, q: number) {
     const ctx = this.ctx!, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -45,7 +47,8 @@ export class Audio {
     this.squeal!.f.frequency.setTargetAtTime(900 + Math.min(600, speed * 12), t, 0.1);
     this.wind!.g.gain.setTargetAtTime(Math.min(0.25, (speed / 60) ** 2 * 0.3), t, 0.2);
   }
-  silence() { if (!this.ctx || !this.eng) return; const t = this.ctx.currentTime; for (const g of [this.eng.g, this.squeal!.g, this.wind!.g]) g.gain.setTargetAtTime(0, t, 0.05); }
+  jet(level: number) { if (!this.ctx || !this.jetN) return; const t = this.ctx.currentTime; this.jetN.g.gain.setTargetAtTime(level * 0.5, t, 0.08); this.jetN.f.frequency.setTargetAtTime(300 + level * 900, t, 0.1); }
+  silence() { if (!this.ctx || !this.eng) return; const t = this.ctx.currentTime; for (const g of [this.eng.g, this.squeal!.g, this.wind!.g, this.jetN!.g]) g.gain.setTargetAtTime(0, t, 0.05); }
 
   private burst(dur: number, type: BiquadFilterType, freq: number, gain: number, q = 1, decay = 4) {
     if (!this.ctx) return;

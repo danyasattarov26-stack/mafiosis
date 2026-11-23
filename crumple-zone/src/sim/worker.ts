@@ -11,7 +11,7 @@ type Msg =
   | { t: 'remove'; key: string }
   | { t: 'place'; key: string; x: number; z: number; yaw: number; repair: boolean; drop?: number }
   | { t: 'repair'; key: string }
-  | { t: 'input'; key: string; throttle: number; brake: number; steer: number; hand: number }
+  | { t: 'input'; key: string; throttle: number; brake: number; steer: number; hand: number; gear?: number | null; fly?: boolean; lift?: number; boost?: number }
   | { t: 'tune'; key: string; power?: number; grip?: number; strength?: number; aids?: boolean }
   | { t: 'launch'; key: string; speed: number }
   | { t: 'box'; box: Box }
@@ -31,7 +31,7 @@ self.onmessage = (e: MessageEvent<Msg>) => {
     case 'remove': sim.remove(m.key); break;
     case 'place': { const c = sim.car(m.key); if (c) { c.place(m.x, m.z, m.yaw, m.repair, m.drop || 0); c.updateFrame(); } break; }
     case 'repair': sim.car(m.key)?.repairHere(); break;
-    case 'input': { const c = sim.car(m.key); if (c && !c.ai) c.input = { throttle: m.throttle, brake: m.brake, steer: m.steer, hand: m.hand }; break; }
+    case 'input': { const c = sim.car(m.key); if (c && !c.ai) c.input = { throttle: m.throttle, brake: m.brake, steer: m.steer, hand: m.hand, gear: m.gear, fly: m.fly, lift: m.lift, boost: m.boost }; break; }
     case 'tune': {
       const c = sim.car(m.key); if (!c) break;
       if (m.power != null) c.powerMul = m.power;
@@ -62,7 +62,7 @@ self.onmessage = (e: MessageEvent<Msg>) => {
         return {
           key: c.key, pos, wheels, speed: c.speed, rpm: c.rpm, gear: c.rev ? -1 : c.gear, health: c.health, dead: c.engineDead,
           fwd: c.fwd, up: c.up, com: c.com, windows: [...c.brokenWindows], lights: [...c.brokenLights], parts: [...c.lostParts], damage: c.damage,
-          throttle: c.input.throttle, brake: c.input.brake,
+          throttle: c.input.throttle, brake: c.input.brake, jets: c.jets, fly: !!c.input.fly, steer: c.input.steer,
         };
       });
       const events = sim.events; sim.events = [];

@@ -14,6 +14,7 @@ import { WorldView, loadTrees } from './render/world';
 import { FX } from './render/fx';
 import { Controls } from './game/input';
 import { Audio } from './game/audio';
+import { VR } from './game/vr';
 
 declare const __BUILD__: string;
 
@@ -45,6 +46,9 @@ const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 const fx = new FX(low()); scene.add(fx.group);
 const controls = new Controls();
 const audio = new Audio(); audio.setVolume(set.volume);
+const vr = new VR(renderer, scene, camera);
+vr.onStart = () => { audio.start(); if (mode !== 'drive') startDrive(); closeMenu(); vr.say('Grip the wheel · triggers = gas / brake'); };
+vr.onEnd = () => { camSnap = true; };
 const fxScale = () => fx.setScale(innerHeight * renderer.getPixelRatio() / (2 * Math.tan((camera.fov * Math.PI) / 360)));
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fxScale(); });
 fxScale();
@@ -74,7 +78,7 @@ let map: MapDef = getMap('lab');
 let world: WorldView | null = null;
 let camMode = set.cam % 4;
 const CAMS = ['Chase', 'Hood', 'Cockpit', 'Orbit'];
-let slow = false, shake = 0, menuOpen = false;
+let slow = false, shake = 0, menuOpen = false, flyOn = false;
 let orbit = { yaw: 0.6, pitch: 0.35, dist: 9 };
 const race = { cp: 1, lap: 0, start: 0, lapStart: 0, running: false, count: 0, last: 0, lastCp: 0, lapTimes: [] as number[] };
 
@@ -85,7 +89,7 @@ function spawnCar(key: string, specId: string, color: string, x: number, z: numb
   scene.add(view.group); view.group.visible = false;
   cars.set(key, { key, spec, color, view, st: null, fresh: false, ai: ai != null, stuck: 0 });
   post({ t: 'spawn', key, spec: specId, x, z, yaw, ai, aiSpeed });
-  if (key === 'me') post({ t: 'tune', key, power: set.power, grip: set.grip, strength: set.strength, aids: set.aids });
+  if (key === 'me') { post({ t: 'tune', key, power: set.power, grip: set.grip, strength: set.strength, aids: set.aids }); flyOn = false; $('#tfly').hidden = !(coarse && spec.flight); }
 }
 function removeCar(key: string) { const r = cars.get(key); if (!r) return; scene.remove(r.view.group); r.view.dispose(); cars.delete(key); post({ t: 'remove', key }); }
 
@@ -117,7 +121,7 @@ function onEvent(ev: SimEvent) {
     case 'light': if (r?.st) fx.debris(r.st.com[0], r.st.com[1], r.st.com[2], ev.id?.startsWith('head') ? 1 : 1, ev.id?.startsWith('head') ? 1 : 0.2, ev.id?.startsWith('head') ? 0.9 : 0.15, 8); break;
     case 'part': if (me) toast(TOAST_NAMES[ev.id || ''] || 'Something fell off!'); audio.crash(8, me ? 1 : near); break;
     case 'spark': fx.spark(ev.x!, ev.y!, ev.z!, ev.v || 8); if (Math.random() < 0.5) audio.scrape(me ? 0.7 : near); break;
-    case 'crash': audio.crash(ev.v || 5, me ? 1 : near); if (me) shake = Math.min(0.6, shake + (ev.v || 5) / 40); break;
+    case 'crash': audio.crash(ev.v || 5, me ? 1 : near); if (me) { shake = Math.min(0.6, shake + (ev.v || 5) / 40); if (vr.active) vr.rumble((ev.v || 5) / 15); } break;
     case 'tyre': if (me) toast('Flat tyre!'); audio.pop(me ? 1 : near); break;
     case 'engine': if (me) toast('Engine destroyed! Press R to recover.', 3500); break;
   }
@@ -127,6 +131,7 @@ function onEvent(ev: SimEvent) {
 const ui = document.getElementById('ui')!;
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 function toast(text: string, ms = 2200) {
+  vr.say(text);
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
   $('#toasts').appendChild(t);
   while ($('#toasts').children.length > 3) $('#toasts').firstElementChild!.remove();
@@ -141,7 +146,7 @@ ui.innerHTML = `
       <header><h1>CRUMPLE<span>ZONE</span></h1><p>Soft-body driving. Every panel dents, every window can shatter.</p></header>
       <section><h2>Where</h2><div id="maps" class="cards"></div></section>
       <section><h2>What</h2><div id="cars" class="cards"></div><div id="colors" class="colors"></div></section>
-      <div class="go-row"><button id="go" class="big">Drive ▶</button><button id="title-settings" class="ghost">⚙ Settings</button></div>
+      <div class="go-row"><button id="go" class="big">Drive ▶</button><button id="title-settings" class="ghost">⚙ Settings</button><button id="title-vr" class="ghost vr-only">🥽 Play in VR</button></div>
       <p class="hint">${coarse ? 'Hold your phone sideways. Gas and brake on the right, steering on the left.' : 'WASD / arrows to drive · Space handbrake · R recover · C camera · Esc menu · Gamepads work too'}</p>
     </div>
   </div>
@@ -152,6 +157,7 @@ ui.innerHTML = `
       <button id="b-cam" title="Camera (C)">🎥</button>
       <button id="b-reset" title="Recover (R)">🔧</button>
       <button id="b-slow" title="Slow motion (M)">🐢</button>
+      <button id="b-vr" class="vr-only" title="Play in VR">🥽</button>
     </div>
     <div id="toasts"></div>
     <div id="dash">
@@ -166,6 +172,7 @@ ui.innerHTML = `
     <div id="countdown" hidden></div>
     <div id="touch" ${coarse ? '' : 'hidden'}>
       <div class="tl"><button id="t-left">◀</button><button id="t-right">▶</button></div>
+      <div class="tf" id="tfly" hidden><button id="t-fly">FLY</button><button id="t-up">▲</button><button id="t-down">▼</button><button id="t-boost">🚀</button></div>
       <div class="tr"><button id="t-hand">HB</button><button id="t-brake">BRAKE</button><button id="t-gas">GAS</button></div>
     </div>
   </div>
@@ -192,6 +199,7 @@ $('#title').addEventListener('click', e => {
   if (b.dataset.color) { pickColor = b.dataset.color; renderTitle(); cars.get('me')?.view.setColor(pickColor); }
   if (b.id === 'go') startDrive();
   if (b.id === 'title-settings') openMenu('settings');
+  if (b.id === 'title-vr') enterVR();
 });
 
 async function showroom() {
@@ -359,7 +367,7 @@ function renderMenu() {
       <tr><td>A D / ← → · stick</td><td>Steer</td></tr><tr><td>Space · A</td><td>Handbrake</td></tr>
       <tr><td>R · B</td><td>Recover (repair, upright)</td></tr><tr><td>T · X</td><td>Back to start</td></tr>
       <tr><td>C · Y</td><td>Change camera</td></tr><tr><td>M · Back</td><td>Slow motion</td></tr>
-      <tr><td>L / Enter · RB</td><td>Launch (crash lab)</td></tr><tr><td>Esc · Start</td><td>Menu</td></tr>
+      <tr><td>L / Enter · RB</td><td>Launch (crash lab)</td></tr><tr><td>F · LB</td><td>Thrusters on/off (Zephyr X)</td></tr><tr><td>E / Q · D-pad</td><td>Climb / descend</td></tr><tr><td>Shift · RB</td><td>Rocket boost</td></tr><tr><td>Esc · Start</td><td>Menu</td></tr>
       <tr><td>Mouse drag</td><td>Look around (orbit camera)</td></tr></table>`;
   }
   $('#menu').innerHTML = `<div class="panel"><div class="tabs">${tabs.map(([id, n]) => `<button data-tab="${id}" class="${id === menuTab ? 'sel' : ''}">${n}</button>`).join('')}<button class="close" data-act="close">✕</button></div><div class="body">${body}</div>
@@ -442,9 +450,20 @@ const tap = (id: string, fn: () => void) => $(id).addEventListener('click', () =
 tap('#b-menu', () => (menuOpen ? closeMenu() : openMenu()));
 tap('#b-cam', () => cycleCam());
 tap('#b-reset', () => recover());
+tap('#b-vr', () => enterVR());
 tap('#b-slow', () => { slow = !slow; toast(slow ? 'Slow motion on' : 'Slow motion off', 900); });
-for (const [id, k] of [['#t-left', 'left'], ['#t-right', 'right'], ['#t-gas', 'gas'], ['#t-brake', 'brake'], ['#t-hand', 'hand']] as const) controls.bindButton($(id), k, () => audio.start());
+for (const [id, k] of [['#t-left', 'left'], ['#t-right', 'right'], ['#t-gas', 'gas'], ['#t-brake', 'brake'], ['#t-hand', 'hand'], ['#t-up', 'up'], ['#t-down', 'down'], ['#t-boost', 'boost']] as const) controls.bindButton($(id), k, () => audio.start());
 addEventListener('keydown', () => audio.start(), { once: true });
+$('#t-fly').addEventListener('click', () => toggleFly());
+function enterVR() {
+  pickMap = pickMap || set.map;
+  vr.enter().catch(e => toast('Could not start VR: ' + (e?.message || e), 4000));
+}
+function toggleFly() {
+  const spec = SPEC[set.car]; if (!spec.flight) return;
+  flyOn = !flyOn; $('#t-fly').classList.toggle('on', flyOn);
+  toast(flyOn ? (coarse ? 'Thrusters on: ▲ climb, ▼ descend, 🚀 boost' : 'Thrusters on: E climb, Q descend, Shift boost, F to land') : 'Thrusters off', 1800);
+}
 function cycleCam() { camMode = (camMode + 1) % 4; set.cam = camMode; saveSettings(); toast(`${CAMS[camMode]} camera`, 800); camSnap = true; }
 
 // orbit camera: drag on the canvas
@@ -535,6 +554,10 @@ function carEffects(r: CarRec, dt: number) {
       }
     } else fx.skids.lift(key);
   }
+  if (st.jets && st.jets[0] > 0.05) {
+    const h = st.com[1] - heightAt(map, st.com[0], st.com[2]);
+    if (h < 6 && Math.random() < dt * 30) { const a = Math.random() * 6.28, r = 1 + Math.random() * 2; fx.kick(st.com[0] + Math.cos(a) * r, st.com[1] - h, st.com[2] + Math.sin(a) * r, 0.7, 0.72, 0.75); }
+  }
   if (st.health < 0.55 && Math.random() < dt * (st.dead ? 14 : 6)) {
     const s = r.spec, z = s.engineAt === 'front' ? s.stations.at(-2)!.z : s.stations[1].z, y = s.stations.at(-2)!.yl + 0.15;
     v.toWorld(st, new THREE.Vector3(0, y, z), tmpV);
@@ -564,6 +587,7 @@ function updateHud(dt: number) {
     info = `<b>Lap ${race.lap}</b> <span>${fmtT(now)}</span><small>Gate ${race.cp === 0 ? map.checkpoints!.length : race.cp}/${map.checkpoints!.length}${b ? ` · Best ${fmtT(b)}` : ''}</small>`;
   } else if (map.lab) info = `<b>Crash Lab</b><small>Pick a target and speed, then Launch</small>`;
   else info = `<b>${map.name}</b><small>${set.traffic ? `${set.traffic} traffic car${set.traffic > 1 ? 's' : ''}` : 'No traffic'}</small>`;
+  if (flyOn) info += '<small class="slow">✈ Flying</small>';
   if (slow) info += '<small class="slow">🐢 Slow motion</small>';
   if (simMs > 30) info += '<small class="slow">Physics is struggling: try fewer cars</small>';
   $('#mode-info').innerHTML = info;
@@ -578,7 +602,6 @@ function boot(on: boolean, msg = '') {
 // ---------------- main loop ----------------
 let last = performance.now();
 function frame(now: number) {
-  requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (document.hidden) return;
   const me = cars.get('me');
@@ -589,10 +612,21 @@ function frame(now: number) {
     if (controls.hit('reset')) recover();
     if (controls.hit('repair')) backToStart();
     if (controls.hit('slow')) { slow = !slow; toast(slow ? 'Slow motion on' : 'Slow motion off', 900); }
-    if (controls.hit('launch') && map.lab) labLaunch();
+    if (controls.hit('launch') && map.lab && !(me?.spec.flight && flyOn)) labLaunch();
+    if (controls.hit('fly')) toggleFly();
     const inp = controls.read(dt, me?.st?.speed ?? 0);
+    if (vr.active && me?.st) {
+      vr.update(dt, me.view, me.st, me.spec);
+      inp.throttle = Math.max(inp.throttle, vr.throttle); inp.brake = Math.max(inp.brake, vr.brake);
+      inp.steer = vr.steer; inp.hand = Math.max(inp.hand, vr.hand);
+      if (vr.lift) inp.lift = vr.lift; inp.boost = Math.max(inp.boost, vr.boost);
+      if (vr.hit('recover')) recover();
+      if (vr.hit('home')) backToStart();
+      if (vr.hit('fly')) toggleFly();
+      if (vr.hit('launch') && map.lab && !me.spec.flight) labLaunch();
+    }
     if (map.id === 'race' && !race.running) { inp.throttle = 0; inp.brake = 0; inp.hand = 1; }
-    post({ t: 'input', key: 'me', ...inp });
+    post({ t: 'input', key: 'me', ...inp, fly: flyOn, gear: vr.active ? vr.gearFor(SPEC[set.car]) : null });
   } else {
     if (menuOpen && controls.hit('menu')) closeMenu();
     post({ t: 'input', key: 'me', throttle: 0, brake: 0, steer: 0, hand: 1 });
@@ -612,12 +646,13 @@ function frame(now: number) {
     if (map.id === 'race') raceTick(dt);
     if (me?.st) {
       const W = me.st.wheels; let slip = 0; for (let i = 0; i < W.length / 6; i++) slip = Math.max(slip, W[i * 6 + 4]);
-      audio.drive(me.st.rpm, me.st.throttle, slip, Math.abs(me.st.speed), me.spec.style === 'muscle' ? 8 : me.spec.style === 'coupe' ? 6 : 6, me.st.dead);
+      audio.drive(me.st.rpm, me.st.throttle, slip, Math.abs(me.st.speed), me.spec.style === 'muscle' ? 8 : me.spec.style === 'super' ? 10 : 6, me.st.dead);
+      audio.jet(me.st.jets ? Math.max(me.st.jets[0] * 0.6, me.st.jets[1]) : 0);
     }
     updateHud(dt);
   }
   fx.update(slow ? dt * 0.25 : dt, (x, z) => heightAt(map, x, z));
-  updateCamera(dt);
+  if (!vr.active) updateCamera(dt);
   world?.update(me?.st ? new THREE.Vector3(...me.st.com) : camera.position);
   renderer.render(scene, camera);
 }
@@ -631,8 +666,8 @@ function frame(now: number) {
   await showroom();
   $('#boot-bar').style.width = '100%';
   setTimeout(() => boot(false), 250);
-  requestAnimationFrame(frame);
-  (window as any).__cz = { cars, post, worker, set, get map() { return map; }, startDrive, labLaunch, openMenu, toTitle, get simMs() { return simMs; }, camera, setCam: (i: number) => { camMode = i; camSnap = true; } };
+  renderer.setAnimationLoop(frame);
+  (window as any).__cz = { cars, post, worker, set, get map() { return map; }, startDrive, labLaunch, openMenu, toTitle, get simMs() { return simMs; }, camera, vr, renderer, scene, setCam: (i: number) => { camMode = i; camSnap = true; } };
 })();
 
 // a new build went live while the game was open: offer a reload

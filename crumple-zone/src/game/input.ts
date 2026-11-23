@@ -1,9 +1,9 @@
 /* Keyboard, gamepad and on-screen touch controls, merged into one set of driving inputs. */
-export interface Drive { throttle: number; brake: number; steer: number; hand: number }
+export interface Drive { throttle: number; brake: number; steer: number; hand: number; lift: number; boost: number }
 
 export class Controls {
   keys = new Set<string>();
-  touch = { gas: false, brake: false, left: false, right: false, hand: false };
+  touch = { gas: false, brake: false, left: false, right: false, hand: false, up: false, down: false, boost: false };
   tilt = 0; useTilt = false;
   steer = 0;
   private pressed = new Set<string>();   // one-shot actions this frame
@@ -39,7 +39,7 @@ export class Controls {
   /** true once when an action's key/button was just pressed */
   hit(action: string) {
     const map: Record<string, string[]> = {
-      camera: ['KeyC'], reset: ['KeyR'], repair: ['KeyT', 'Backspace'], menu: ['Escape', 'KeyP'], slow: ['KeyM'], launch: ['KeyL', 'Enter'], aids: ['KeyG'],
+      camera: ['KeyC'], fly: ['KeyF'], reset: ['KeyR'], repair: ['KeyT', 'Backspace'], menu: ['Escape', 'KeyP'], slow: ['KeyM'], launch: ['KeyL', 'Enter'], aids: ['KeyG'],
     };
     return (map[action] || []).some(k => this.pressed.has(k)) || this.pressed.has('pad:' + action);
   }
@@ -52,6 +52,8 @@ export class Controls {
     let target = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     let hand = k.has('Space') ? 1 : 0;
     let analog = false;
+    let lift = (k.has('KeyE') || this.touch.up ? 1 : 0) - (k.has('KeyQ') || this.touch.down ? 1 : 0);
+    let boost = k.has('ShiftLeft') || k.has('ShiftRight') || this.touch.boost ? 1 : 0;
     if (this.touch.gas) thr = 1;
     if (this.touch.brake) brk = 1;
     if (this.touch.hand) hand = 1;
@@ -65,7 +67,8 @@ export class Controls {
       const x = p.axes[0] ?? 0;
       if (Math.abs(x) > 0.12) { target = Math.sign(x) * ((Math.abs(x) - 0.12) / 0.88) ** 1.4; analog = true; }
       thr = Math.max(thr, b(7)); brk = Math.max(brk, b(6)); hand = Math.max(hand, b(0) > 0.5 ? 1 : 0);
-      const acts: [number, string][] = [[3, 'camera'], [1, 'reset'], [2, 'repair'], [9, 'menu'], [8, 'slow'], [5, 'launch']];
+      boost = Math.max(boost, b(5)); if (b(12) > 0.5) lift = 1; if (b(13) > 0.5) lift = -1;
+      const acts: [number, string][] = [[3, 'camera'], [1, 'reset'], [2, 'repair'], [9, 'menu'], [8, 'slow'], [5, 'launch'], [4, 'fly']];
       for (const [i, a] of acts) { const on = b(i) > 0.5; if (on && !this.padPrev[i]) this.pressed.add('pad:' + a); this.padPrev[i] = on; }
       break;
     }
@@ -78,6 +81,6 @@ export class Controls {
       const d = goal - this.steer, step = rate * dt;
       this.steer += Math.abs(d) < step ? d : Math.sign(d) * step;
     }
-    return { throttle: thr, brake: brk, steer: this.steer, hand };
+    return { throttle: thr, brake: brk, steer: this.steer, hand, lift, boost };
   }
 }

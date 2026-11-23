@@ -10,7 +10,11 @@ import { heightAt, surfAt, GRIP, boxMatrix, type MapDef, type Box } from './maps
 export const DT = 1 / 1200;
 const G = 9.81;
 
-export interface Input { throttle: number; brake: number; steer: number; hand: number }
+export interface Input {
+  throttle: number; brake: number; steer: number; hand: number;
+  gear?: number | null;        // manual gearbox: -1 reverse, 0 neutral, 1.. forward. Leave out for the automatic
+  fly?: boolean; lift?: number; boost?: number;   // flying cars: hover on/off, climb (+) / descend (−), rear rocket
+}
 export interface SimEvent { t: 'glass' | 'light' | 'part' | 'spark' | 'crash' | 'engine' | 'tyre' | 'scrape'; car: string; id?: string; x?: number; y?: number; z?: number; v?: number }
 
 interface WBox extends Box { M: number[] }
@@ -23,7 +27,9 @@ export class Car {
   aids = true;
   input: Input = { throttle: 0, brake: 0, steer: 0, hand: 0 };
   gear = 1; rev = false; rpm = 800; shiftT = 0; revT = 0; health = 1; engineDead = false;
-  speed = 0; fwd = [0, 0, 1]; up = [0, 1, 0]; com = [0, 0, 0];
+  speed = 0; fwd = [0, 0, 1]; up = [0, 1, 0]; com = [0, 0, 0]; vcom = [0, 0, 0]; omega = [0, 0, 0];
+  jets = [0, 0];                        // how hard the lift and rear thrusters are firing (0..1), for drawing
+  private flyAcc = [0, 0, 0]; private flyAlpha = [0, 0, 0];
   brokenWindows = new Set<string>(); brokenLights = new Set<string>(); lostParts = new Set<string>();
   powerMul = 1; gripMul = 1; strengthMul = 1;
   totalMass = 0; damage = 0; lastDamage = 0;
@@ -87,8 +93,54 @@ export class Car {
       if (x < b[0]) b[0] = x; if (y < b[1]) b[1] = y; if (z < b[2]) b[2] = z; if (x > b[3]) b[3] = x; if (y > b[4]) b[4] = y; if (z > b[5]) b[5] = z;
     }
     this.com = [mx / M, my / M, mz / M];
+    this.vcom = [vx / M, vy / M, vz / M];
     this.speed = (vx * f[0] + vy * f[1] + vz * f[2]) / M;
   }
+}
+
+/** thrusters for cars that fly: worked out once per frame, applied to every node each step */
+export function flightPlan(c: Car, g: number) {
+  const fl = c.def.spec.flight; c.jets = [0, 0];
+  const acc = (c as any).flyAcc as number[], alpha = (c as any).flyAlpha as number[];
+  acc[0] = acc[1] = acc[2] = 0; alpha[0] = alpha[1] = alpha[2] = 0;
+  if (!fl || c.engineDead) return false;
+  const inp = c.input, up = c.up, f = c.fwd, v = c.vcom;
+  // spin rate, roughly: angular momentum over a scalar inertia
+  const p = c.pos, vel = c.vel, com = c.com;
+  let Lx = 0, Ly = 0, Lz = 0, I = 0;
+  for (let i = 0; i < c.n; i += 3) {
+    const j = i * 3, m = c.mass[i], rx = p[j] - com[0], ry = p[j + 1] - com[1], rz = p[j + 2] - com[2];
+    const ux = vel[j] - v[0], uy = vel[j + 1] - v[1], uz = vel[j + 2] - v[2];
+    Lx += m * (ry * uz - rz * uy); Ly += m * (rz * ux - rx * uz); Lz += m * (rx * uy - ry * ux); I += m * (rx * rx + ry * ry + rz * rz) * (2 / 3);
+  }
+  const w = I > 0 ? [Lx / I, Ly / I, Lz / I] : [0, 0, 0]; c.omega = w;
+  const boost = Math.max(0, Math.min(1, inp.boost || 0));
+  // an invisible fence: flying cars get nudged back towards the middle near the edge of the map
+  const edge = c.sim.map.half - 25;
+  for (const k of [0, 2]) if (Math.abs(c.com[k]) > edge) acc[k] -= Math.sign(c.com[k]) * (Math.abs(c.com[k]) - edge) * 0.8 + v[k] * 0.5;
+  const fh = Math.hypot(f[0], f[2]) || 1, hx = f[0] / fh, hz = f[2] / fh;
+  if (inp.fly) {
+    // lift: hold a climb rate, thrust along the car's own up (it stays level, so that's mostly straight up)
+    const want = (inp.lift || 0) * fl.climb;
+    const ay = Math.max(0, Math.min(g * 2.4, g + 3 * (want - v[1])));
+    const k = ay / Math.max(0.5, up[1]);
+    acc[0] += up[0] * k; acc[1] += up[1] * k; acc[2] += up[2] * k;
+    c.jets[0] = Math.min(1, ay / (g * 1.6));
+    // forward/back thrust, and grip on the air so it doesn't drift sideways forever
+    const af = inp.throttle * fl.thrust - inp.brake * fl.thrust * 0.7;
+    acc[0] += hx * af; acc[2] += hz * af;
+    const vlat = v[0] * hz - v[2] * hx;               // sideways speed (along the car's +x)
+    acc[0] -= hz * vlat * 2.4; acc[2] += hx * vlat * 2.4;
+    acc[0] -= v[0] * 0.12; acc[2] -= v[2] * 0.12;
+    // keep level: turn about up × worldUp; turn left/right with the steering
+    const kp = 7, kd = 3.5;
+    alpha[0] = -kp * up[2] - kd * w[0];
+    alpha[2] = kp * up[0] - kd * w[2];
+    alpha[1] = 2.5 * (-(inp.steer || 0) * fl.yaw - w[1]);
+    c.jets[1] = Math.min(1, Math.abs(af) / fl.thrust);
+  }
+  if (boost > 0) { acc[0] += f[0] * fl.boost * boost; acc[1] += f[1] * fl.boost * boost; acc[2] += f[2] * fl.boost * boost; c.jets[1] = Math.max(c.jets[1], boost); }
+  return inp.fly || boost > 0;
 }
 
 // ---------------- AI ----------------
@@ -147,7 +199,7 @@ export class Sim {
   /** advance by `time` seconds in fixed steps */
   run(time: number) {
     const steps = Math.max(1, Math.round(time / DT));
-    for (const c of this.cars) { c.updateFrame(); if (c.ai) c.ai.drive(this.cars); }
+    for (const c of this.cars) { c.updateFrame(); if (c.ai) c.ai.drive(this.cars); (c as any).flying = flightPlan(c, this.gravity); }
     const boxSets = this.cars.map(c => this.nearBoxes(c));
     for (let s = 0; s < steps; s++) {
       for (let i = 0; i < this.cars.length; i++) this.stepCar(this.cars[i], boxSets[i], s === 0);
@@ -196,6 +248,13 @@ export class Sim {
       if (c.spring[k] && L < r0 * 0.55) f += c.bk[k] * 20 * (L - r0 * 0.55);   // bump stop
       F[a] += f * nx; F[a + 1] += f * ny; F[a + 2] += f * nz;
       F[b] -= f * nx; F[b + 1] -= f * ny; F[b + 2] -= f * nz;
+    }
+    if ((c as any).flying) {
+      const A = (c as any).flyAcc as number[], al = (c as any).flyAlpha as number[], o = c.com;
+      for (let i = 0; i < n; i++) {
+        const j = i * 3, m = c.mass[i], rx = p[j] - o[0], ry = p[j + 1] - o[1], rz = p[j + 2] - o[2];
+        F[j] += m * (A[0] + al[1] * rz - al[2] * ry); F[j + 1] += m * (A[1] + al[2] * rx - al[0] * rz); F[j + 2] += m * (A[2] + al[0] * ry - al[1] * rx);
+      }
     }
     this.tyres(c, boxes, first);
     // integrate
@@ -264,16 +323,19 @@ export class Sim {
     let avgW = 0, cnt = 0;
     c.def.wheels.forEach((w, i) => { if (w.drive && !c.w[i].lost) { avgW += c.w[i].omega; cnt++; } });
     avgW = cnt ? avgW / cnt : 0;
+    const manual = c.input.gear != null, neutral = manual && c.input.gear === 0;
+    if (manual) { c.rev = c.input.gear === -1; c.gear = Math.max(1, Math.min(spec.gears.length, c.input.gear as number)); }
     const ratio = c.rev ? -spec.reverse * spec.final : spec.gears[c.gear - 1] * spec.final;
     c.rpm = Math.max(spec.idleRpm, Math.min(spec.maxRpm * 1.05, (Math.abs(avgW * ratio) * 60) / (2 * Math.PI)));
     const peakT = (spec.power * 1000) / (0.75 * spec.maxRpm * 2 * Math.PI / 60) * c.powerMul;
     const curve = c.rpm > spec.maxRpm ? 0 : 0.72 + 0.28 * Math.sin(Math.PI * Math.min(1, c.rpm / spec.maxRpm));
-    let thr = c.rev ? c.input.brake : c.input.throttle, brk = c.rev ? c.input.throttle : c.input.brake;
+    let thr = manual ? c.input.throttle : c.rev ? c.input.brake : c.input.throttle, brk = manual ? c.input.brake : c.rev ? c.input.throttle : c.input.brake;
+    if (neutral) { c.rpm = spec.idleRpm + thr * (spec.maxRpm * 0.85 - spec.idleRpm); thr = 0; }
     if (c.engineDead) thr = 0;
     const engT = peakT * curve * thr * (0.3 + 0.7 * c.health) * ratio * 0.9 / nDrive;
-    const engBrake = thr < 0.05 ? -Math.sign(avgW) * Math.min(Math.abs(avgW) * 2, peakT * 0.12 * Math.abs(ratio) / nDrive) : 0;
+    const engBrake = !neutral && thr < 0.05 ? -Math.sign(avgW) * Math.min(Math.abs(avgW) * 2, peakT * 0.12 * Math.abs(ratio) / nDrive) : 0;
     // gearbox (once per frame)
-    if (first) {
+    if (first && !manual) {
       c.shiftT -= 1 / 60;
       const f = c.speed;
       const roadRpm = (Math.abs(f) / spec.wheelR) * spec.gears[c.gear - 1] * spec.final * 60 / (2 * Math.PI);

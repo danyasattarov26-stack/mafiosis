@@ -58,9 +58,11 @@ function cracks() {
 export interface CarState {
   pos: Float32Array; wheels: Float32Array; fwd: number[]; up: number[]; com: number[];
   windows: string[]; lights: string[]; parts: string[]; health: number; speed: number; brake: number;
+  jets?: number[]; steer?: number;
 }
 
 const BIG = new Set(['bus', 'truck']);
+const ADD = THREE.AdditiveBlending;
 
 export class CarView {
   group = new THREE.Group();
@@ -73,6 +75,10 @@ export class CarView {
   private bumpers: { mesh: THREE.Mesh; nodes: number[] }[] = [];
   private wheelObjs: THREE.Group[] = [];
   private interior = new THREE.Group();
+  private flames: { mesh: THREE.Mesh; kind: 0 | 1 }[] = [];
+  private steerWheel: THREE.Mesh | null = null;
+  /** local spots VR needs: steering wheel frame, gear lever base, handbrake pivot */
+  cockpit = { wheel: new THREE.Group(), shifter: new THREE.Group(), knob: new THREE.Mesh(), handbrake: new THREE.Group(), display: null as THREE.Mesh | null, wheelR: 0.18 };
   private paint: THREE.MeshStandardMaterial;
   private brokenSet = new Set<string>();
   private lightsBroken = new Set<string>();
@@ -180,6 +186,7 @@ export class CarView {
       const s = spec.stations[i];
       const tp0 = taper(i), tp1 = taper(i + 1);
       if (spec.style === 'muscle' && !s.top) for (const [u0, u1] of [[0.36, 0.45], [0.55, 0.64]]) addStripe(this.decalS, didx, dcol, sideQuad(i, 3), u0, u1, bulgeOf[3], tp0, tp1, stripe);
+      if (spec.style === 'super') for (const e of [1, 5]) addStripe(this.decalS, didx, dcol, sideQuad(i, e), e === 1 ? 0 : 0.8, e === 1 ? 0.2 : 1, bulgeOf[e], tp0, tp1, '#1a1b1f');
       if (spec.style === 'coupe') for (const e of [1, 5]) addStripe(this.decalS, didx, dcol, sideQuad(i, e), e === 1 ? 0.62 : 0.28, e === 1 ? 0.72 : 0.38, bulgeOf[e], tp0, tp1, stripe);
       if (spec.style === 'bus') for (const e of [1, 5]) addStripe(this.decalS, didx, dcol, sideQuad(i, e), e === 1 ? 0.7 : 0.2, e === 1 ? 0.8 : 0.3, bulgeOf[e], tp0, tp1, stripe);
       if (spec.style === 'truck' && !s.side && i > 0 && i < 5) for (const e of [2, 4]) addStripe(this.decalS, didx, dcol, sideQuad(i, e), 0.3, 0.55, bulgeOf[e], tp0, tp1, stripe);
@@ -235,16 +242,58 @@ export class CarView {
 
     // ---- dashboard, firewall and steering wheel (rigid, so the cockpit view looks like a cockpit) ----
     const wi = Math.max(0, spec.stations.findIndex(s => s.top === 'front')), cowl = spec.stations[Math.min(S - 1, wi + 1)], low0 = spec.stations[wi];
-    const dashMat = new THREE.MeshStandardMaterial({ color: '#202126', roughness: 0.85 });
+    const dashMat = new THREE.MeshStandardMaterial({ color: '#3b3e46', roughness: 0.8 });
     const dw = Math.min(cowl.wl, cowl.wb) * 0.96, top = cowl.yt - 0.03, bot = low0.yb + 0.04, depth = Math.min(0.6, (cowl.z - low0.z) * 0.8);
     const dash = new THREE.Mesh(new THREE.BoxGeometry(dw * 2, top - bot, depth), dashMat);
     dash.position.set(0, (top + bot) / 2, cowl.z - depth / 2 - 0.02);
-    const wheel = new THREE.Mesh(new THREE.TorusGeometry(big ? 0.24 : 0.18, 0.025, 8, 24), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.6 }));
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(big ? 0.24 : 0.18, 0.025, 8, 24), new THREE.MeshStandardMaterial({ color: '#2b2d33', roughness: 0.5, metalness: 0.2 }));
     const d = spec.driver, wz = Math.min(cowl.z - depth - 0.05, d.z + (big ? 0.55 : 0.45));
-    wheel.position.set(d.x, d.y - (big ? 0.4 : 0.28), wz); wheel.rotation.x = big ? -1.0 : -0.35;
+    const wheelBase = this.cockpit.wheel; this.cockpit.wheelR = big ? 0.24 : 0.18;
+    wheelBase.position.set(d.x, d.y - (big ? 0.4 : 0.28), wz); wheelBase.rotation.x = big ? -1.0 : -0.35;
+    const spokes = new THREE.Mesh(new THREE.BoxGeometry(this.cockpit.wheelR * 2, 0.03, 0.015), wheel.material);
+    const hubc = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 12).rotateX(Math.PI / 2), wheel.material);
+    wheel.add(spokes, hubc); wheelBase.add(wheel); this.steerWheel = wheel;
     const col = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, Math.max(0.1, dash.position.z - depth / 2 - wz + 0.1), 6).rotateX(Math.PI / 2), dashMat);
-    col.position.set(d.x, wheel.position.y - 0.06, (wz + dash.position.z - depth / 2) / 2 + 0.05);
-    this.interior.add(dash, wheel, col);
+    col.position.set(d.x, wheelBase.position.y - 0.06, (wz + dash.position.z - depth / 2) / 2 + 0.05);
+    // gear lever on the centre console, handbrake lever beside it
+    const sh = this.cockpit.shifter, seatY = low0.yb + (big ? 0.9 : 0.45);
+    sh.position.set(d.x * (big ? 0.55 : 0.12), seatY + 0.12, d.z + (big ? 0.35 : 0.3));
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.16), dashMat); plate.position.y = -0.12; sh.add(plate);
+    const knob = this.cockpit.knob; knob.geometry = new THREE.SphereGeometry(0.03, 12, 10); knob.material = new THREE.MeshStandardMaterial({ color: '#d9dbe0', roughness: 0.3, metalness: 0.7 });
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6).translate(0, -0.06, 0), dashMat);
+    knob.add(stick); sh.add(knob);
+    const hb = this.cockpit.handbrake; hb.position.set(sh.position.x - (d.x > 0 ? -0.1 : 0.1) * -1, seatY - 0.02, d.z - 0.05);
+    const lever = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.26).translate(0, 0, 0.13), new THREE.MeshStandardMaterial({ color: '#2a2b30', roughness: 0.5 }));
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.09, 8).rotateX(Math.PI / 2).translate(0, 0, 0.22), new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.8 }));
+    hb.add(lever, grip); hb.rotation.x = -0.15;
+    // a small screen on the dash (speed, gear, damage) for VR, where the page HUD can't be seen
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.11).rotateY(Math.PI), new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }));
+    scr.position.set(d.x * 0.5, top + 0.06, cowl.z - depth - 0.03); scr.rotation.x = 0.35; scr.visible = false; this.cockpit.display = scr;
+    // seats
+    const seatMat = new THREE.MeshStandardMaterial({ color: spec.style === 'bus' ? '#1d3557' : '#26282e', roughness: 0.9 });
+    for (const sx of big ? [d.x] : [d.x, -d.x]) {
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.1, 0.5), seatMat); base.position.set(sx, seatY - 0.12, d.z + 0.05);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.1), seatMat); back.position.set(sx, seatY + 0.2, d.z - 0.24); back.rotation.x = -0.18;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.09), seatMat); head.position.set(sx, seatY + 0.6, d.z - 0.3);
+      this.interior.add(base, back, head);
+    }
+    this.interior.add(dash, wheelBase, col, sh, hb, scr);
+    // thrusters for cars that fly: four lift jets underneath, two rockets at the back
+    if (spec.flight) {
+      const nozMat = new THREE.MeshStandardMaterial({ color: '#3a3d44', roughness: 0.35, metalness: 0.85, envMap: env });
+      const lo = spec.stations[0], hiS = spec.stations[S - 2];
+      const lifts = [[0.62, spec.stations[2].z], [-0.62, spec.stations[2].z], [0.62, hiS.z - 0.4], [-0.62, hiS.z - 0.4]];
+      for (const [x, z] of lifts) {
+        const n = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.1, 14), nozMat); n.position.set(x, 0.1, z); this.interior.add(n);
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1, 12, 1, true).rotateX(Math.PI).translate(0, -0.5, 0), new THREE.MeshBasicMaterial({ color: '#2f8cff', transparent: true, opacity: 0.9, blending: ADD, depthWrite: false, side: THREE.DoubleSide }));
+        fl.position.set(x, 0.05, z); fl.visible = false; this.interior.add(fl); this.flames.push({ mesh: fl, kind: 0 });
+      }
+      for (const x of [0.36, -0.36]) {
+        const n = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.22, 14).rotateX(Math.PI / 2), nozMat); n.position.set(x, lo.yl * 0.55, lo.z - 0.05); this.interior.add(n);
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1, 12, 1, true).rotateX(Math.PI).translate(0, -0.5, 0).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ff5a00', transparent: true, opacity: 0.95, blending: ADD, depthWrite: false, side: THREE.DoubleSide }));
+        fl.position.set(x, lo.yl * 0.55, lo.z - 0.15); fl.visible = false; this.interior.add(fl); this.flames.push({ mesh: fl, kind: 1 });
+      }
+    }
     this.interior.matrixAutoUpdate = false;
     this.group.add(this.body, this.under, this.glass, this.broken, this.decal, this.lamps, this.interior);
   }
@@ -310,6 +359,15 @@ export class CarView {
       const o = this.comRest.clone().applyMatrix4(M);
       M.setPosition(st.com[0] - o.x, st.com[1] - o.y, st.com[2] - o.z);
       this.interior.matrixWorldNeedsUpdate = true;
+    }
+    if (this.steerWheel) this.steerWheel.rotation.z = (st.steer ?? 0) * 2.4;
+    if (this.flames.length) {
+      const J = st.jets || [0, 0], fl = 0.85 + Math.random() * 0.3;
+      for (const f of this.flames) {
+        const k = J[f.kind];
+        f.mesh.visible = k > 0.02;
+        if (f.mesh.visible) { const len = (f.kind ? 0.6 + k * 2.2 : 0.4 + k * 1.3) * fl; const w = 0.7 + k * 0.5; if (f.kind) f.mesh.scale.set(w, w, len); else f.mesh.scale.set(w, len, w); }
+      }
     }
     // wheels
     const W = st.wheels, x = new THREE.Vector3(), y = new THREE.Vector3(), z = new THREE.Vector3(), c = new THREE.Vector3();

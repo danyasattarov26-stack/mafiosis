@@ -16,7 +16,9 @@ export interface Spec {
   power: number; maxRpm: number; idleRpm: number; gears: number[]; final: number; reverse: number;
   springHz: number; damping: number; steerMax: number; strength: number;
   colors: string[]; driver: { x: number; y: number; z: number };
-  style: 'coupe' | 'muscle' | 'bus' | 'truck';
+  style: 'coupe' | 'muscle' | 'bus' | 'truck' | 'super';
+  /** cars with thrusters: climb rate (m/s), forward thrust and rocket boost (m/s²), turn rate in the air (rad/s) */
+  flight?: { climb: number; thrust: number; boost: number; yaw: number };
 }
 
 const S = (z: number, yb: number, yl: number, yt: number, wb: number, wl: number, wt: number, side = false, top: Glass = null): Station => ({ z, yb, yl, yt, wb, wl, wt, side, top });
@@ -107,6 +109,28 @@ export const SPECS: Spec[] = [
       S(2.40, 0.55, 1.25, 2.62, 1.10, 1.14, 1.06, true, 'front'),
       S(3.15, 0.55, 1.15, 1.55, 1.10, 1.14, 1.08),
       S(3.62, 0.58, 0.98, 1.38, 1.04, 1.08, 1.02),
+    ],
+  },
+  {
+    id: 'zephyr', name: 'Zephyr X', emoji: '🚀', style: 'super', blurb: 'White wedge supercar with lift jets underneath and a rocket at the back. It flies.',
+    mass: 1450, engineMass: 200, engineAt: 'rear', track: 1.72, wheelR: 0.34, wheelW: 0.3, tyreGrip: 1.2,
+    power: 480, maxRpm: 8500, idleRpm: 1000, gears: [3.1, 2.2, 1.65, 1.3, 1.06, 0.88, 0.75], final: 3.7, reverse: 3.0,
+    springHz: 2.0, damping: 0.45, steerMax: 0.58, strength: 1.05,
+    colors: ['#f4f6f8', '#121214', '#c1121f', '#4cc9f0', '#ffd60a'], driver: { x: 0.4, y: 0.92, z: -0.35 },
+    axles: [{ z: -1.45, steer: false, drive: true, hand: true }, { z: 1.42, steer: true, drive: true, hand: false }],
+    flight: { climb: 7, thrust: 9, boost: 22, yaw: 1.4 },
+    stations: [
+      S(-2.25, 0.30, 0.72, 0.84, 0.92, 0.98, 0.88),
+      S(-1.95, 0.20, 0.74, 0.94, 0.99, 1.03, 0.90),
+      S(-1.45, 0.15, 0.74, 0.98, 1.00, 1.04, 0.86, false, 'rear'),
+      S(-0.85, 0.14, 0.72, 1.10, 1.00, 1.03, 0.64, true),
+      S(-0.30, 0.14, 0.70, 1.14, 1.00, 1.01, 0.63, true),
+      S(0.15, 0.14, 0.68, 1.11, 0.99, 1.00, 0.64, true, 'front'),
+      S(0.95, 0.14, 0.62, 0.76, 0.98, 0.98, 0.82),
+      S(1.42, 0.15, 0.58, 0.69, 0.97, 0.97, 0.84),
+      S(1.95, 0.17, 0.50, 0.59, 0.94, 0.93, 0.80),
+      S(2.30, 0.20, 0.38, 0.46, 0.86, 0.85, 0.72),
+      S(2.44, 0.24, 0.30, 0.36, 0.78, 0.77, 0.64),
     ],
   },
 ];
