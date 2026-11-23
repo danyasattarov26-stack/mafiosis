@@ -85,4 +85,4 @@ npm run dev
 npm run build
 ```
 
-Credits for the tree models are in [CREDITS.md](CREDITS.md).
+Credits for the tree models are in [CREDITS.md](CREDITS.md). A picture of every model is in [docs/models.png](docs/models.png).
