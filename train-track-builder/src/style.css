@@ -1,0 +1,76 @@
+:root { --ink: #1d3557; --cream: #fff8e7; --sun: #ffd166; --coral: #ff7a59; --green: #2a9d8f; --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #7ec8ff; font-family: 'Nunito', system-ui, sans-serif; color: var(--ink); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; position: fixed; inset: 0; overscroll-behavior: none; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#ui { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+#ui [hidden] { display: none !important; }
+button { font: inherit; cursor: pointer; border: 0; color: inherit; }
+h1, h2, b { font-family: var(--display); }
+
+#boot { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: linear-gradient(160deg, #7ec8ff, #b8f2c9); }
+.boot-card { text-align: center; } .boot-card .logo { font-size: 72px; } .boot-card h1 { margin: 0 0 14px; font-size: 32px; }
+.bar { width: 260px; height: 14px; border-radius: 99px; background: rgba(255,255,255,.6); border: 2px solid var(--ink); overflow: hidden; margin: 0 auto; }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--sun), var(--coral)); transition: width .2s; }
+
+/* menu */
+.menu { position: absolute; inset: 0; pointer-events: auto; overflow-y: auto; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); background: linear-gradient(180deg, rgba(29,53,87,.55), rgba(29,53,87,.15) 60%, rgba(29,53,87,.0)); color: #fff; text-align: center; }
+.title .logo { font-size: 56px; line-height: 1; }
+.title h1 { margin: 4px 0; font-size: clamp(30px, 5vw, 48px); text-shadow: 0 4px 0 var(--ink); }
+.title p { margin: 0 0 8px; font-weight: 800; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.menu h2 { font-size: 20px; margin: 14px 0 8px; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.trains { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.pill { background: var(--cream); border: 3px solid var(--ink); border-radius: 99px; padding: 8px 16px; font-weight: 800; font-size: 16px; box-shadow: 0 4px 0 var(--ink); }
+.pill.on { background: var(--sun); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; max-width: 980px; margin: 0 auto; }
+.card { background: var(--cream); border: 3px solid var(--ink); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; align-items: center; box-shadow: 0 6px 0 var(--ink); position: relative; transition: transform .1s; }
+.card:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink); }
+.card .emoji { font-size: 46px; line-height: 1.1; } .card b { font-size: 22px; } .card span { font-size: 14px; color: #475569; } .card em { font-size: 12px; font-style: normal; font-weight: 800; color: var(--green); }
+.card .tag { position: absolute; top: 8px; right: 8px; background: #7b2cbf; color: #fff; font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
+.region-valley { background: linear-gradient(160deg, #fff8e7, #d8f5cf); } .region-desert { background: linear-gradient(160deg, #fff8e7, #ffe2b8); }
+.region-snow { background: linear-gradient(160deg, #ffffff, #dcecff); } .region-moon { background: linear-gradient(160deg, #e9e6ff, #b9b5d6); }
+
+/* HUDs */
+.hud { position: absolute; inset: 0; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.topbar { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+.topbar > * { pointer-events: auto; }
+.where { flex: 1; min-width: 0; pointer-events: none !important; }
+.stats { display: inline-block; background: rgba(255,248,231,.92); border: 2px solid var(--ink); border-radius: 12px; padding: 5px 12px; font-weight: 800; font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { background: var(--cream); border: 3px solid var(--ink); border-radius: 14px; padding: 7px 14px; font-weight: 800; font-size: 16px; box-shadow: 0 4px 0 var(--ink); white-space: nowrap; }
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+.btn.go { background: var(--green); color: #fff; font-family: var(--display); font-size: 19px; }
+.btn.ghost { background: rgba(255,248,231,.85); }
+.palette { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 8px; padding: 8px; background: rgba(29,53,87,.78); border-radius: 20px; max-width: calc(100vw - 20px); overflow-x: auto; scrollbar-width: none; }
+.palette::-webkit-scrollbar { display: none; }
+.palette.shake { animation: shake .35s; }
+@keyframes shake { 20% { transform: translateX(calc(-50% - 8px)); } 60% { transform: translateX(calc(-50% + 8px)); } }
+.piece { flex: 0 0 auto; width: 78px; height: 78px; border-radius: 16px; background: var(--cream); border: 3px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-shadow: 0 4px 0 #0b1a2e; }
+.piece:hover { background: #fff3c4; } .piece:active { transform: translateY(3px); box-shadow: 0 1px 0 #0b1a2e; }
+.piece .ic { font-size: 30px; line-height: 1; font-weight: 800; } .piece .nm { font-size: 12px; font-weight: 800; }
+.help { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 104px); color: #fff; font-weight: 800; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,.6); white-space: nowrap; pointer-events: none !important; }
+.drive .help { bottom: max(10px, env(safe-area-inset-bottom)); }
+.speed { position: absolute; left: 50%; transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 54px); background: rgba(29,53,87,.8); color: #fff; border-radius: 18px; padding: 4px 18px; text-align: center; pointer-events: none !important; }
+.speed b { font-size: 40px; line-height: 1; display: block; } .speed span { font-size: 12px; font-weight: 800; opacity: .8; }
+.speed.fast b { color: var(--sun); }
+.pedals { position: absolute; left: 0; right: 0; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 26px); display: flex; justify-content: space-between; padding: 0 max(18px, env(safe-area-inset-left)) 0 max(18px, env(safe-area-inset-right)); pointer-events: none !important; }
+.pedal { pointer-events: auto; width: 116px; height: 116px; border-radius: 50%; border: 4px solid var(--ink); font-size: 40px; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 6px 0 var(--ink); touch-action: none; }
+.pedal small { font-size: 12px; font-family: var(--display); }
+.pedal.go { background: #57cc99; color: #fff; } .pedal.brake { background: #ef476f; color: #fff; }
+.pedal.on { transform: translateY(4px) scale(.96); box-shadow: 0 2px 0 var(--ink); filter: brightness(1.1); }
+.toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -10px) scale(.9); opacity: 0; background: var(--cream); border: 3px solid var(--ink); border-radius: 16px; padding: 10px 18px; font-family: var(--display); font-weight: 800; font-size: 20px; text-align: center; max-width: min(560px, 90vw); transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 5px 0 var(--ink); }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.toast.good { background: #d8f8df; } .toast.bad { background: #ffe0e5; }
+
+@media (max-height: 520px), (max-width: 700px) {
+  .btn { font-size: 13px; padding: 5px 10px; border-width: 2px; border-radius: 11px; box-shadow: 0 3px 0 var(--ink); }
+  .btn.go { font-size: 15px; }
+  .stats { font-size: 11px; padding: 3px 8px; }
+  .piece { width: 60px; height: 60px; border-radius: 13px; border-width: 2px; }
+  .piece .ic { font-size: 22px; } .piece .nm { font-size: 10px; }
+  .palette { gap: 6px; padding: 6px; border-radius: 16px; }
+  .help { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 80px); font-size: 11px; }
+  .pedal { width: 92px; height: 92px; font-size: 30px; }
+  .speed { top: calc(max(6px, env(safe-area-inset-top)) + 40px); } .speed b { font-size: 30px; }
+  .toast { font-size: 16px; }
+  .card { padding: 10px; } .card .emoji { font-size: 34px; } .card b { font-size: 18px; }
+}
