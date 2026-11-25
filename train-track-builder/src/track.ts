@@ -173,6 +173,17 @@ export class Track {
     return o;
   }
 
+  /** the piece at a distance along the track */
+  segAt(s: number): Seg {
+    const L = this.length;
+    if (this.closed) s = ((s % L) + L) % L; else s = Math.max(0, Math.min(L, s));
+    let lo = 0, hi = this.segs.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (this.segs[m].s0 <= s) lo = m; else hi = m - 1; }
+    return this.segs[lo];
+  }
+  /** is this a bend that pushes the train sideways? */
+  isBend(s: number) { const id = this.segAt(s).id; return id === 'left' || id === 'right' || id === 'helixL' || id === 'helixR'; }
+
   /** every sample in order (for drawing) */
   *all() { for (const sg of this.segs) for (const s of sg.samples) yield s; }
 }

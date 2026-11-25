@@ -9,7 +9,7 @@ const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
 const models = new Map<string, GLTF>();
 export async function loadModels(names: string[], progress: (k: number) => void) {
   let done = 0;
-  await Promise.all(names.map(n => loader.loadAsync(`/models/${n}.glb`).then(g => {
+  await Promise.all(names.map(n => loader.loadAsync(`models/${n}.glb`).then(g => {
     g.scene.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     models.set(n, g);
   }).catch(e => console.warn('model', n, e)).finally(() => progress(++done / names.length))));

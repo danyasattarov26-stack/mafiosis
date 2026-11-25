@@ -7,6 +7,7 @@ function versionFile() {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [versionFile()],
   define: { __BUILD__: JSON.stringify(BUILD) },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500, assetsInlineLimit: 0 },

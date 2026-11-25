@@ -56,10 +56,17 @@ class Sound {
   }
   stopDrive() { if (this.wind) this.wind.gain.value = 0; }
 
-  horn(steam: boolean) {
-    if (steam) { this.tone(440, 430, 0.9, 0.12, 'sawtooth'); this.tone(554, 545, 0.9, 0.1, 'sawtooth'); this.tone(659, 650, 0.9, 0.08, 'sawtooth'); }
+  horn(kind: 'steam' | 'diesel' | 'tram' | 'chime') {
+    if (kind === 'steam') { this.tone(440, 430, 0.9, 0.12, 'sawtooth'); this.tone(554, 545, 0.9, 0.1, 'sawtooth'); this.tone(659, 650, 0.9, 0.08, 'sawtooth'); }
+    else if (kind === 'diesel') { this.tone(311, 311, 0.7, 0.12, 'sawtooth'); this.tone(370, 370, 0.7, 0.1, 'sawtooth'); this.tone(466, 466, 0.7, 0.07, 'square'); }
+    else if (kind === 'chime') { [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, f, 0.35, 0.09, 'sine', i * 0.16)); }
     else { this.tone(880, 880, 0.18, 0.12, 'square'); this.tone(660, 660, 0.25, 0.12, 'square', 0.2); }
   }
+  star(n = 0) { const f = 988 * Math.pow(2, (n % 5) / 12); this.tone(f, f * 1.5, 0.12, 0.07, 'triangle'); this.tone(f * 2, f * 2, 0.15, 0.04, 'sine', 0.05); }
+  trick() { [523, 784, 1046].forEach((f, i) => this.tone(f, f, 0.18, 0.1, 'square', i * 0.07)); }
+  lap() { [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, f, 0.22, 0.1, 'triangle', i * 0.1)); this.burst(0.5, 0.06, 4000, 'highpass'); }
+  squeal() { this.tone(2400, 2100, 0.25, 0.05, 'sawtooth'); this.burst(0.2, 0.05, 5000, 'highpass'); }
+  crash() { this.burst(1.2, 0.7, 500); this.burst(0.6, 0.35, 3000, 'highpass'); this.tone(90, 40, 0.8, 0.25, 'sine'); setTimeout(() => this.burst(0.5, 0.4, 800), 250); setTimeout(() => this.burst(0.4, 0.3, 1200), 600); }
   click() { this.tone(900, 1200, 0.06, 0.08, 'triangle'); }
   place() { this.tone(300, 520, 0.12, 0.15, 'triangle'); this.burst(0.08, 0.1, 1500); }
   error() { this.tone(220, 150, 0.25, 0.12, 'sawtooth'); }
