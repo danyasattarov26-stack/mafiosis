@@ -3,7 +3,7 @@
 1. **No game servers, accounts, voice or database.** The author said: "5 players max, no voice chat, no supabase, no live kit, no fly.io and no Google. Just a simple game for me and my friends."
    - Co-op is browser to browser (WebRTC via Trystero/Nostr). One player hosts; the host's browser is the authority for the world and animals.
    - **Dropped as a result:** login, 5 server shards, the 1000-player load test, the server list with ping, voice chat, and the `/admin` web panel (it would have nothing to administer without a server).
-   - **Kept:** mute, block and report. Mute and block are local; reports are kept on the device, because there's no server to send them to.
+   - **Safety:** the chat filter and name filter are on by default. Muting and blocking work inside the co-op session code, but there are **no buttons for them yet**, and reporting isn't built (there's no server to send reports to).
 2. **Single Vite app, not a pnpm monorepo.** With no server there is no `apps/server`. Shared types and registries live in `src/shared`, so splitting them out later is straightforward.
 3. **Player physics are custom, not Rapier.** A voxel world only needs box-vs-grid collisions, which are cheaper and more predictable written by hand. Rapier is still the plan for vehicles (M6).
 4. **Block textures are drawn in code.** Every texture is painted from a small pattern recipe and the block's colours:
