@@ -1,0 +1,322 @@
+{
+ "mine": {
+  "id": 431019,
+  "title": "Stone hit",
+  "author": "CamoMano",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/CamoMano/sounds/431019/",
+  "seconds": 0.4
+ },
+ "wood_break": {
+  "id": 164472,
+  "title": "Crack of branch 3.wav",
+  "author": "deleted_user_2104797",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/deleted_user_2104797/sounds/164472/",
+  "seconds": 0.6
+ },
+ "step_stone": {
+  "id": 197778,
+  "title": "Footstep on Stone",
+  "author": "sgossner",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/sgossner/sounds/197778/",
+  "seconds": 0.5
+ },
+ "step_snow": {
+  "id": 234783,
+  "title": "Crunch",
+  "author": "wubitog",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/wubitog/sounds/234783/",
+  "seconds": 0.5
+ },
+ "eat": {
+  "id": 348112,
+  "title": "Crunch",
+  "author": "LilMati",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/LilMati/sounds/348112/",
+  "seconds": 0.3
+ },
+ "hurt": {
+  "id": 536372,
+  "title": "Mask Grunt Sound",
+  "author": "Hoggington",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Hoggington/sounds/536372/",
+  "seconds": 0.7
+ },
+ "pickup": {
+  "id": 665183,
+  "title": "Item or Material Pickup Pop 1 of 3",
+  "author": "el_boss",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/el_boss/sounds/665183/",
+  "seconds": 0.1
+ },
+ "craft": {
+  "id": 96132,
+  "title": "Bing1.wav",
+  "author": "BMacZero",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/BMacZero/sounds/96132/",
+  "seconds": 0.7
+ },
+ "fire": {
+  "id": 558967,
+  "title": "Ambiance_Campfire_Loop_Stereo.wav",
+  "author": "Nox_Sound",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Nox_Sound/sounds/558967/",
+  "seconds": 12.7
+ },
+ "rain": {
+  "id": 413854,
+  "title": "Ambience - Freezing Rain falling on snow-covered leaves",
+  "author": "jaegrover",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/jaegrover/sounds/413854/",
+  "seconds": 14.4
+ },
+ "wind": {
+  "id": 405134,
+  "title": "Autumn forest - leaves falling close to pond II (loopable)",
+  "author": "Mjeno",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Mjeno/sounds/405134/",
+  "seconds": 20.2
+ },
+ "birds": {
+  "id": 274882,
+  "title": "Birds_Singing.wav",
+  "author": "ivolipa",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/ivolipa/sounds/274882/",
+  "seconds": 22.3
+ },
+ "night": {
+  "id": 746362,
+  "title": "Southern Summer Evening Ambience with Crickets 1",
+  "author": "RyanKingArt",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/RyanKingArt/sounds/746362/",
+  "seconds": 13.4
+ },
+ "ocean": {
+  "id": 530699,
+  "title": "Water wave Beach Field-recording 200815_0036.wav",
+  "author": "szegvari",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/szegvari/sounds/530699/",
+  "seconds": 21.3
+ },
+ "discover": {
+  "id": 878614,
+  "title": "Gem Sparkle",
+  "author": "Qvantor",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Qvantor/sounds/878614/",
+  "seconds": 2.3
+ },
+ "bear": {
+  "id": 204912,
+  "title": "Didgeridoo Monster Roar",
+  "author": "Noxdl",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Noxdl/sounds/204912/",
+  "seconds": 3.1
+ },
+ "cow": {
+  "id": 59245,
+  "title": "z-moo01.wav",
+  "author": "Zozzy",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Zozzy/sounds/59245/",
+  "seconds": 1.7
+ },
+ "chicken": {
+  "id": 316920,
+  "title": "Chicken Single Alarm Call",
+  "author": "Rudmer_Rotteveel",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Rudmer_Rotteveel/sounds/316920/",
+  "seconds": 1.2
+ },
+ "horse": {
+  "id": 269571,
+  "title": "horse neigh shortened.wav",
+  "author": "shadoWisp",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/shadoWisp/sounds/269571/",
+  "seconds": 1.5
+ },
+ "parrot": {
+  "id": 759965,
+  "title": "Parrots - Goffin's Cockatoo, Squawk",
+  "author": "TheKingOfGeeks360",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/TheKingOfGeeks360/sounds/759965/",
+  "seconds": 0.7
+ },
+ "deer": {
+  "id": 696777,
+  "title": "Deer_chucker_call_s",
+  "author": "ferventtorpor",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/ferventtorpor/sounds/696777/",
+  "seconds": 3.1
+ },
+ "seagull": {
+  "id": 263786,
+  "title": "Seagull single call",
+  "author": "steaq",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/steaq/sounds/263786/",
+  "seconds": 0.4
+ },
+ "chop": {
+  "id": 537435,
+  "title": "Wood Chop 8.wav",
+  "author": "wavecal22",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/wavecal22/sounds/537435/",
+  "seconds": 1.6
+ },
+ "dig": {
+  "id": 849840,
+  "title": "shoveling-dirt",
+  "author": "JeffPearson",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/JeffPearson/sounds/849840/",
+  "seconds": 0.7
+ },
+ "place": {
+  "id": 454222,
+  "title": "thud pint glass beer down on table wood knock door Vows.flac",
+  "author": "kyles",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/kyles/sounds/454222/",
+  "seconds": 0.4
+ },
+ "step_grass": {
+  "id": 421131,
+  "title": "Footstep_Grass_1.wav",
+  "author": "GiocoSound",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/GiocoSound/sounds/421131/",
+  "seconds": 0.5
+ },
+ "step_sand": {
+  "id": 854618,
+  "title": "Fs_Sand_03",
+  "author": "renandosanjos",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/renandosanjos/sounds/854618/",
+  "seconds": 0.4
+ },
+ "splash": {
+  "id": 867462,
+  "title": "Waboba Moon Ball Water Splash 7",
+  "author": "qubodup",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/qubodup/sounds/867462/",
+  "seconds": 0.8
+ },
+ "drink": {
+  "id": 723602,
+  "title": "Drinking Tea From a Cup Slowly",
+  "author": "R1nkata",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/R1nkata/sounds/723602/",
+  "seconds": 1.9
+ },
+ "death": {
+  "id": 504626,
+  "title": "BODY FALL - V HVY - DIRT",
+  "author": "leonelmail",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/leonelmail/sounds/504626/",
+  "seconds": 1.6
+ },
+ "click": {
+  "id": 448086,
+  "title": "Normal click",
+  "author": "Breviceps",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Breviceps/sounds/448086/",
+  "seconds": 0
+ },
+ "swing": {
+  "id": 422506,
+  "title": "Swinging staff whoosh (strong) 01.wav",
+  "author": "Nightflame",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/Nightflame/sounds/422506/",
+  "seconds": 0.4
+ },
+ "thunder": {
+  "id": 750671,
+  "title": "Thunder 10",
+  "author": "LukaCafuka",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/LukaCafuka/sounds/750671/",
+  "seconds": 9.3
+ },
+ "wolf": {
+  "id": 472402,
+  "title": "22_Lobo_aullando.wav",
+  "author": "JoseAgudelo",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/JoseAgudelo/sounds/472402/",
+  "seconds": 4.5
+ },
+ "boar": {
+  "id": 620082,
+  "title": "Pig_Grunt_08.flac",
+  "author": "wwstudioswastaken",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/wwstudioswastaken/sounds/620082/",
+  "seconds": 2.8
+ },
+ "sheep": {
+  "id": 803460,
+  "title": "Sheep - Bleat; Close Perspective",
+  "author": "TheKingOfGeeks360",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/TheKingOfGeeks360/sounds/803460/",
+  "seconds": 1.4
+ },
+ "lion": {
+  "id": 567803,
+  "title": "poujade_eva_2020_2021_RoarOfLion(son2).wav",
+  "author": "iut_Paris8",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/iut_Paris8/sounds/567803/",
+  "seconds": 2.1
+ },
+ "frog": {
+  "id": 744309,
+  "title": "Frogs - Cope's Gray Tree Frog, Single Croak, Crickets in Background",
+  "author": "TheKingOfGeeks360",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/TheKingOfGeeks360/sounds/744309/",
+  "seconds": 2.2
+ },
+ "elephant": {
+  "id": 854137,
+  "title": "Mastodon trumpet",
+  "author": "vintprox",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/vintprox/sounds/854137/",
+  "seconds": 1
+ },
+ "owl": {
+  "id": 871238,
+  "title": "Owl-2",
+  "author": "SyntaxSeed",
+  "license": "CC0 1.0",
+  "url": "https://freesound.org/people/SyntaxSeed/sounds/871238/",
+  "seconds": 2.9
+ }
+}
