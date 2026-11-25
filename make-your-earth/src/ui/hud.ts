@@ -61,7 +61,7 @@ export class Hud {
   }
 
   // ---------------- every frame (cheap parts only) ----------------
-  private lastBars = '';
+  private lastBars = ''; private reviveMode = '';
   frame() {
     const g = this.game, p = g.player;
     $('.loading', this.root).style.display = g.ready ? 'none' : 'flex';
@@ -77,9 +77,14 @@ export class Hud {
     // being down
     const rv = $('.revive', this.root);
     const friend = g.downedFriendNear();
-    if (p.downed > 0) { rv.hidden = false; rv.innerHTML = `<b>${t('hud.downed')}</b><p>${t('hud.downedHint', { s: Math.ceil(p.downed) })}</p><button class="btn">${t('hud.giveUp')}</button>`; ($('button', rv) as HTMLButtonElement).onclick = () => g.giveUp(); }
-    else if (friend) { rv.hidden = false; rv.innerHTML = `<p>${t('hud.revive', { name: esc(friend.name) })}</p>`; }
-    else rv.hidden = true;
+    // only rebuild when what's shown changes, so the button stays clickable
+    const mode = p.downed > 0 ? 'down' : friend ? 'friend:' + friend.name : '';
+    if (mode !== this.reviveMode) {
+      this.reviveMode = mode; rv.hidden = !mode;
+      if (mode === 'down') { rv.innerHTML = `<b>${t('hud.downed')}</b><p class="secs"></p><button class="btn">${t('hud.giveUp')}</button>`; ($('button', rv) as HTMLButtonElement).onclick = () => g.giveUp(); }
+      else if (friend) rv.innerHTML = `<p>${t('hud.revive', { name: esc(friend.name) })}</p>`;
+    }
+    if (mode === 'down') $('.secs', rv).textContent = t('hud.downedHint', { s: Math.ceil(p.downed) });
     if (this.coop) $('.coopinfo', this.root).textContent = `${t('hud.roomCode', { code: this.coop.code })} · ${t('hud.players', { n: this.coop.players })}`;
     const c = $('.cross', this.root); c.classList.toggle('busy', !!g.breaking);
     c.style.setProperty('--p', String(Math.min(1, g.breaking?.p ?? 0)));
@@ -115,11 +120,11 @@ export class Hud {
   // ---------------- panels ----------------
   close() {
     if (this.cursor) { this.game.inv.add(this.cursor.k, this.cursor.n); this.cursor = null; this.renderCursor(); }
-    this.open = null; $('.panel', this.root).hidden = true;
+    this.open = null; $('.panel', this.root).hidden = true; this.root.classList.remove('panel-open');
     this.game.paused = false;
   }
   openInventory(station = 'hand') {
-    this.station = station; this.open = 'inv'; this.game.paused = true;
+    this.station = station; this.open = 'inv'; this.game.paused = true; this.root.classList.add('panel-open');
     $('.panel', this.root).hidden = false; this.renderInventory();
   }
   private tooltip(k: string) {
@@ -226,7 +231,7 @@ export class Hud {
   private renderCursor() { const c = $('.cursor-item', this.root); c.hidden = !this.cursor; c.innerHTML = this.stackHTML(this.cursor); }
 
   openPause(onSettings: () => void) {
-    this.open = 'pause'; this.game.paused = true;
+    this.open = 'pause'; this.game.paused = true; this.root.classList.add('panel-open');
     const panel = $('.panel', this.root); panel.hidden = false;
     panel.innerHTML = `<div class="pause"><h2>${t('hud.paused')}</h2>
       <button class="btn big" data-a="resume">${t('hud.resume')}</button>
@@ -237,16 +242,16 @@ export class Hud {
     panel.querySelector<HTMLElement>('[data-a=quit]')!.onclick = () => this.onQuit();
   }
   showDeath(newName: string | null, grave: { x: number; z: number } | null) {
-    this.open = 'dead'; this.game.paused = true;
+    this.open = 'dead'; this.game.paused = true; this.root.classList.add('panel-open');
     const panel = $('.panel', this.root); panel.hidden = false;
     panel.innerHTML = `<div class="pause dead"><h2>${t('hud.dead')}</h2>${newName ? `<p>${esc(t('hud.newLife', { name: newName, x: grave ? grave.x : '—', z: grave ? grave.z : '—' }))}</p>` : ''}<button class="btn big">${t('hud.continue')}</button></div>`;
     panel.querySelector<HTMLElement>('button')!.onclick = () => { this.close(); this.onRebirth(); };
   }
 
   // ---------------- map ----------------
-  private mapScale = 2;
+  private mapScale = 0.6;
   openMap() {
-    this.open = 'map'; this.game.paused = true;
+    this.open = 'map'; this.game.paused = true; this.root.classList.add('panel-open');
     const panel = $('.panel', this.root); panel.hidden = false;
     panel.innerHTML = `<div class="mapwrap"><h3>${t('map.title')} <small>${t('map.addWaypoint')}</small></h3><canvas class="map"></canvas>
       <div class="maptools"><span class="mcoords"></span><button class="btn" data-a="clear">${t('map.clear')}</button><button class="btn" data-a="close">${t('map.close')}</button></div></div>`;

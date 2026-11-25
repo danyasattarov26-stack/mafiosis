@@ -92,7 +92,7 @@ export class Menu {
     $<HTMLElement>('[data-add]', body).onclick = () => {
       const code = $<HTMLInputElement>('.fcode', body).value.trim().toUpperCase(), name = cleanName($<HTMLInputElement>('.fname', body).value);
       if (code.length !== 6 || code === p.code || list.some(f => f.code === code)) return;
-      saveFriends([...list, { code, name }]); this.render(); this.probeAll();
+      saveFriends([...list, { code, name }]); this.render(); this.probeAll(true);
     };
     body.querySelectorAll<HTMLElement>('[data-rm]').forEach(b => b.onclick = () => { saveFriends(list.filter(f => f.code !== b.dataset.rm)); this.render(); });
     body.querySelectorAll<HTMLInputElement>('[data-party]').forEach(c => c.onchange = () => { if (c.checked) { if (this.party.size >= 4) { c.checked = false; return; } this.party.add(c.dataset.party!); } else this.party.delete(c.dataset.party!); });
@@ -105,9 +105,11 @@ export class Menu {
     };
     this.probeAll();
   }
-  private probing = false;
-  private async probeAll() {
-    if (this.probing) return; this.probing = true;
+  private probing = false; private probedAt = 0;
+  private async probeAll(force = false) {
+    // at most every 15 s, and only when there is someone to check on
+    if (this.probing || !friends().length || (!force && Date.now() - this.probedAt < 15000)) return;
+    this.probing = true; this.probedAt = Date.now();
     await Promise.all(friends().map(async (f: Friend) => { const s = await inbox.probe(f.code, 8000); this.status.set(f.code, s ? (s.room ? 'play' : 'on') : 'off'); }));
     this.probing = false; if (this.tab === 'friends' && !this.root.hidden) this.render();
   }

@@ -1,0 +1,41 @@
+# Progress
+
+Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers or voice.
+
+- [x] **M0 Setup:**
+  - Vite + TypeScript + Three.js app;
+  - Vercel project `make-your-earth` live at https://make-your-earth.vercel.app;
+  - Vitest unit tests and a Playwright smoke test.
+- [x] **M1 Main menu:**
+  - animated shader Earth with clouds, atmosphere and parallax;
+  - Play, Friends, Settings and Credits tabs;
+  - EN / PT switch;
+  - settings with auto-detected presets, separate render and simulation distance, toggles, audio, key rebinding and look options.
+- [x] **M2 World:**
+  - 8 biomes, rivers, caves, ores, lava;
+  - worker meshing;
+  - walk, sprint, crouch, swim, climb;
+  - axe, chopping and mining with tool tiers;
+  - placing blocks;
+  - inventory (36 + 9 + armour + off-hand) with drag, shift-click and split;
+  - recipe crafting at hand, workbench, furnace, campfire, anvil and lab;
+  - map (M) with coordinates and waypoints.
+- [x] **M3 Survival:**
+  - hunger, thirst, stamina, temperature, sickness and cures;
+  - 30 animal species with AI, hunting and drops;
+  - downed → grave-chest → new character;
+  - day/night, rain, snow and storms;
+  - CC0 sounds and ambience.
+- [~] **M4 Multiplayer (re-scoped):**
+  - **Done:**
+    - host/join by room code, max 5 players;
+    - friend codes with online status and invites;
+    - spawn together;
+    - text chat with filter;
+    - revive.
+  - **Not built:** accounts, shards, voice and the server load test, because the author dropped them.
+- [ ] M5 Building: blueprints, Block Maker, fire spread, land claims
+- [ ] M6 Vehicles
+- [ ] M7 Society
+- [ ] M8 Science & space
+- [ ] M9 Polish: admin panel (not applicable without a server), mobile tuning on real devices

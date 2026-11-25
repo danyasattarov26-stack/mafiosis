@@ -8,6 +8,9 @@
 */
 export const APP_ID = 'make-your-earth.vercel.app/v1';
 export const MAX_PLAYERS = 5;
+// public Nostr relays used only to introduce players to each other; game traffic then flows browser to browser
+const RELAYS = ['wss://relay.primal.net', 'wss://relay.nostr.net', 'wss://nos.lol', 'wss://relay.damus.io', 'wss://nostr.liberty.fans', 'wss://relay.wavlake.com'];
+const CONFIG = { appId: 'make-your-earth.vercel.app/v1', relayUrls: RELAYS, relayRedundancy: 4 };
 let lib: Promise<any> | null = null;
 const trystero = () => (lib ||= import('trystero'));
 
@@ -22,7 +25,7 @@ export class Room {
   constructor(public code: string) {
     this.ready = (async () => {
       const { joinRoom } = await trystero();
-      this.room = joinRoom({ appId: APP_ID }, 'room-' + code);
+      this.room = joinRoom(CONFIG, 'room-' + code);
       this.act = this.room.makeAction('m');
       this.act.onMessage((d: any, ctx: any) => { const peer = typeof ctx === 'string' ? ctx : ctx?.peerId; if (d && typeof d === 'object' && typeof d.k === 'string') this.onMsg(d, peer); });
       this.room.onPeerJoin((ctx: any) => { const peer = typeof ctx === 'string' ? ctx : ctx?.peerId; this.peers.add(peer); this.onJoin(peer); });
@@ -59,7 +62,7 @@ class Inbox {
     this.close(); this.code = code;
     try {
       const { joinRoom } = await trystero();
-      const room = this.room = joinRoom({ appId: APP_ID }, 'inbox-' + code);
+      const room = this.room = joinRoom(CONFIG, 'inbox-' + code);
       const act = room.makeAction('m');
       act.onMessage((d: any, ctx: any) => {
         const peer = typeof ctx === 'string' ? ctx : ctx?.peerId;
@@ -76,7 +79,7 @@ class Inbox {
     let room: any = null;
     try {
       const { joinRoom } = await trystero();
-      room = joinRoom({ appId: APP_ID }, 'inbox-' + code);
+      room = joinRoom(CONFIG, 'inbox-' + code);
       const act = room.makeAction('m');
       return await new Promise(res => {
         const tm = setTimeout(() => res(null), ms);

@@ -145,3 +145,4 @@ canvas.map { display: block; border-radius: 10px; cursor: crosshair; max-width: 
   .touchact { transform: scale(0.85); transform-origin: right bottom; bottom: 56px; }
   .helditem { bottom: 100px; }
 }
+#hud.panel-open .touchact, #hud.panel-open .touchbtns, #hud.panel-open .bars, #hud.panel-open .hotbar { display: none; }
