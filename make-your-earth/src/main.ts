@@ -183,6 +183,7 @@ renderer.setAnimationLoop(now => {
     if (esc && hud.open && hud.open !== 'dead') { hud.close(); input.requestLock(); }
     else if ((esc || lost) && !hud.open) { input.exitLock(); hud.openPause(() => openSettingsInGame()); }
     if (input.hit('inventory') && !game.downedFriendNear()) { if (hud.open === 'inv') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openInventory('hand'); } }
+    if (input.hit('camera') && !hud.open) game.cycleCamera();
     if (input.hit('journal')) { if (hud.open === 'journal') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openJournal(); } }
     if (input.hit('map')) { if (hud.open === 'map') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openMap(); } }
     }

@@ -13,6 +13,7 @@ import { Inventory, type Stack } from './inventory';
 import { Animals, loadModel, type Beast, type PetSave } from './animals';
 import { Projectiles } from './projectiles';
 import { Boats, type Boat, type BoatSave } from './boats';
+import { Avatar, type AvatarState } from './avatar';
 import { MOD_BLOCKS, runHooks, modIds } from '../mods/mods';
 import { newQuest, progress, nearestVault, STARSTONES, type QuestData } from './quest';
 import { SKY_ALTAR, SKY_TOP, SKY_BELLS, type Dim } from '../world/gen';
@@ -144,7 +145,7 @@ export const LOOKS = ['barbarian', 'knight', 'rogue', 'ranger'];
 export const randomName = (r = Math.random) => `${FIRST[Math.floor(r() * FIRST.length)]} ${LAST[Math.floor(r() * LAST.length)]}`;
 
 export interface Grave { id: string; x: number; y: number; z: number; owner: string; name: string; items: Stack[]; at: number }
-export interface Remote { id: string; name: string; look: number; obj: THREE.Group; mixer: THREE.AnimationMixer | null; actions: Record<string, THREE.AnimationAction>; cur: string; pos: THREE.Vector3; yaw: number; anim: string; downed: boolean; label: THREE.Sprite; seen: number }
+export interface Remote { id: string; name: string; look: number; obj: THREE.Group; avatar: Avatar; pos: THREE.Vector3; yaw: number; anim: string; held: string; off: string; downed: boolean; label: THREE.Sprite; seen: number }
 export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; dim?: Dim; skyEdits?: any; skyContainers?: Record<string, Container>; skyCrops?: Record<string, number>; quest?: QuestData; boats?: BoatSave[]; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
 
 export class Game {
@@ -348,6 +349,20 @@ export class Game {
   render(r: THREE.WebGLRenderer) {
     r.info.autoReset = false; r.info.reset();          // count both passes in the stats
     r.autoClear = false; r.clear();
+    if (this.camMode && this.ready) {
+      // pull the camera back (or round to the front), stopping short of walls; aiming still happens from your eyes
+      const eye = this.camera.position.clone(), q = this.camera.quaternion.clone();
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q), dir = this.camMode === 1 ? fwd.clone().negate() : fwd.clone();
+      const hit = this.world.raycast(eye, dir, 4.2), dist = hit ? Math.max(0.6, hit.dist - 0.3) : 4;
+      // behind you: over the right shoulder, so the crosshair isn't on your head
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(q).setY(0).normalize().multiplyScalar(this.camMode === 1 ? 0.7 : 0);
+      this.camera.position.copy(eye).addScaledVector(dir, dist).add(new THREE.Vector3(0, 0.25, 0)).add(right);
+      this.camera.lookAt(this.camMode === 1 ? eye.clone().add(right).addScaledVector(fwd, 6) : eye.clone().add(new THREE.Vector3(0, 0.1, 0)));
+      r.render(this.scene, this.camera);
+      this.camera.position.copy(eye); this.camera.quaternion.copy(q);
+      r.autoClear = true;
+      return;
+    }
     r.render(this.scene, this.camera);
     this.fpCam.aspect = this.camera.aspect; this.fpCam.fov = this.camera.fov; this.fpCam.updateProjectionMatrix();
     this.fpCam.rotation.z = this.camera.rotation.z;           // the hurt tilt moves your hands too
@@ -405,7 +420,7 @@ export class Game {
     if (this.slowFall > 0) { this.slowFall -= dt; p.vel.y = Math.max(p.vel.y, -2.5); (p as any).fallStart = p.pos.y; }
     // fell off the Sky Isles: the sky catches you
     if (this.dim === 'sky' && p.pos.y < 40 && !p.dead) { p.pos.set(SKY_ALTAR[0] + 2.5, SKY_ALTAR[1] + 12, SKY_ALTAR[2] + 2.5); p.vel.set(0, 0, 0); this.slowFall = 4; p.hurt(8, 'fall'); this.toast(t('sky.caught'), 'bad'); }
-    this.updateRemotes(dt);
+    this.updateRemotes(dt); this.selfTick(dt);
     this.updateDrops(dt);
     this.tickFuses(dt);
     if (this.site) this.siteTick(dt);
@@ -1475,21 +1490,19 @@ export class Game {
   }
 
   // ======================= other players =======================
-  async upsertRemote(id: string, s: { name: string; look: number; x: number; y: number; z: number; yaw: number; anim: string; downed: boolean }) {
+  upsertRemote(id: string, s: { name: string; look: number; x: number; y: number; z: number; yaw: number; anim: string; held?: string; off?: string; downed: boolean }) {
     let r = this.remotes.get(id);
-    if (!r) {
+    if (!r || r.look !== s.look) {
+      if (r) this.scene.remove(r.obj);
       const obj = new THREE.Group(); const label = this.makeLabel(s.name); label.position.y = 2.15; obj.add(label);
-      r = { id, name: s.name, look: s.look, obj, mixer: null, actions: {}, cur: '', pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, anim: 'idle', downed: false, label, seen: performance.now() };
+      const avatar = new Avatar(s.look, this.atlas); obj.add(avatar.obj);
+      r = { id, name: s.name, look: s.look, obj, avatar, pos: new THREE.Vector3(s.x, s.y, s.z), yaw: s.yaw, anim: 'idle', held: '', off: '', downed: false, label, seen: performance.now() };
+      obj.position.copy(r.pos);
       this.remotes.set(id, r); this.scene.add(obj);
-      const g = await loadModel(LOOKS[s.look % LOOKS.length]);
-      if (g && this.remotes.get(id) === r) {
-        const m = cloneSkinned(g.scene); m.scale.setScalar(0.95); obj.add(m);
-        r.mixer = new THREE.AnimationMixer(m);
-        for (const c of g.animations) r.actions[c.name] = r.mixer.clipAction(c);
-      }
     }
     if (r.name !== s.name) { r.obj.remove(r.label); r.label = this.makeLabel(s.name); r.label.position.y = 2.15; r.obj.add(r.label); r.name = s.name; }
     r.pos.set(s.x, s.y, s.z); r.yaw = s.yaw; r.anim = s.anim; r.downed = s.downed; r.seen = performance.now();
+    r.held = typeof s.held === 'string' && ITEM[s.held] ? s.held : ''; r.off = typeof s.off === 'string' && ITEM[s.off] ? s.off : '';
   }
   removeRemote(id: string) { const r = this.remotes.get(id); if (!r) return; this.scene.remove(r.obj); this.remotes.delete(id); }
   private makeLabel(text: string) {
@@ -1502,15 +1515,43 @@ export class Game {
     for (const r of this.remotes.values()) {
       r.obj.position.lerp(r.pos, Math.min(1, dt * 10));
       const d = r.yaw + Math.PI - r.obj.rotation.y; r.obj.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * Math.min(1, dt * 10);
-      const want = r.downed ? 'Lie_Idle' : r.anim === 'run' ? 'Running_A' : r.anim === 'walk' ? 'Walking_A' : r.anim === 'chop' ? 'Chopping' : 'Idle_A';
-      if (want !== r.cur && r.actions[want]) { const prev = r.actions[r.cur]; r.actions[want].reset().fadeIn(0.2).play(); prev?.fadeOut(0.2); r.cur = want; }
-      r.mixer?.update(dt);
+      r.avatar.update(dt, { anim: r.anim, held: r.held, off: r.off, downed: r.downed }, r.obj.rotation.y);
     }
+  }
+  /** the pose others should see you in */
+  private pose(): string {
+    const p = this.player, moving = Math.hypot(p.vel.x, p.vel.z), act = this.act?.kind, tool = ITEM[this.inv.held()?.k ?? '']?.tool?.type;
+    if (p.downed > 0) return 'down';
+    if (this.boating) return 'sit';
+    if (this.riding) return 'ride';
+    if (this.bowCharge >= 0) return 'draw';
+    if (act === 'release') return 'release';
+    if (act === 'eat') return 'eat';
+    if (act === 'slash') return 'slash';
+    if (act === 'thrust') return 'stab';
+    if (act === 'chop' || act === 'punch' || this.mining || this.mineT > 0) return tool === 'pickaxe' ? 'mine' : tool === 'shovel' || tool === 'hoe' ? 'dig' : tool === 'hammer' ? 'hammer' : tool ? 'chop' : 'hit';
+    if (p.crouching && this.inv.offhand && ITEM[this.inv.offhand.k]?.shield) return 'block';
+    if (!p.onGround && !p.inWater && p.vel.y > 1) return 'jump';
+    return moving > 5 ? 'run' : moving > 0.5 ? 'walk' : 'idle';
   }
   /** what others should see of you */
   myState() {
-    const p = this.player, moving = Math.hypot(p.vel.x, p.vel.z);
-    return { name: p.name, look: this.look, x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2), yaw: +p.yaw.toFixed(2), anim: this.swing > 0.2 ? 'chop' : moving > 5 ? 'run' : moving > 0.5 ? 'walk' : 'idle', downed: p.downed > 0 };
+    const p = this.player;
+    return { name: p.name, look: this.look, x: +p.pos.x.toFixed(2), y: +p.pos.y.toFixed(2), z: +p.pos.z.toFixed(2), yaw: +p.yaw.toFixed(2), anim: this.pose(), held: this.inv.held()?.k ?? '', off: this.inv.offhand?.k ?? '', downed: p.downed > 0 };
+  }
+  myAvatarState(): AvatarState { const m = this.myState(); return { anim: m.anim, held: m.held, off: m.off, downed: m.downed }; }
+
+  // ---------------- the F5 camera: first person, behind you, in front of you ----------------
+  camMode = 0;
+  private selfAvatar: Avatar | null = null; private selfLook = -1;
+  cycleCamera() { this.camMode = (this.camMode + 1) % 3; this.toast(t(('cam.' + this.camMode) as any)); }
+  private selfTick(dt: number) {
+    if (this.camMode === 0) { if (this.selfAvatar) this.selfAvatar.obj.visible = false; return; }
+    if (!this.selfAvatar || this.selfLook !== this.look) { if (this.selfAvatar) this.scene.remove(this.selfAvatar.obj); this.selfAvatar = new Avatar(this.look, this.atlas); this.selfLook = this.look; this.scene.add(this.selfAvatar.obj); }
+    const a = this.selfAvatar, p = this.player;
+    a.obj.visible = !p.dead;
+    a.obj.position.copy(p.pos); a.obj.rotation.y = p.yaw + Math.PI;
+    a.update(dt, this.myAvatarState(), a.obj.rotation.y);
   }
   /** friend nearby who is down? */
   downedFriendNear(): Remote | null { for (const r of this.remotes.values()) if (r.downed && r.pos.distanceTo(this.player.pos) < 2.5) return r; return null; }

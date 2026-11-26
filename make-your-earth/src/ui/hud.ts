@@ -48,7 +48,7 @@ export class Hud {
       <div class="panel" hidden></div>
       <div class="cursor-item" hidden></div>
       ${game.input.touch ? `<div class="touchbtns">
-        <button data-act="rotate" class="b-rot">⟳</button><button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="journal">📜</button><button data-act="menu">☰</button>
+        <button data-act="rotate" class="b-rot">⟳</button><button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="journal">📜</button><button data-act="camera">🎥</button><button data-act="menu">☰</button>
       </div>
       <div class="touchact"><button class="b-hit" data-hold="primary">⛏<small>${t('touch.break')}</small></button><button class="b-use" data-act="use">✋<small>${t('touch.use')}</small></button><button class="b-jump" data-hold="jump">⤒<small>${t('touch.jump')}</small></button><button class="b-run" data-toggle="sprint">🏃<small>${t('touch.sprint')}</small></button><button class="b-eat" data-act="eat">🍖</button></div>` : ''}`;
     document.body.appendChild(this.root);

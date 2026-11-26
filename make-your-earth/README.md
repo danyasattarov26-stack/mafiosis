@@ -31,6 +31,7 @@ Live: https://make-your-earth.vercel.app
 | E | Y | Inventory and crafting |
 | M | Back | Map (click to add waypoints) |
 | J | — | Journal: the story and what to do next |
+| F5 | — | Camera: first person → behind you → facing you (🎥 on a phone) |
 | F | X | Eat / drink what you hold |
 | Q | D-pad down | Drop one item |
 | T | D-pad up | Chat (co-op) |

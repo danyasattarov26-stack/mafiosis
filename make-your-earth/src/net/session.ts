@@ -98,7 +98,7 @@ export class Session {
         if (this.blocked.has(from)) return;
         const first = !this.names.has(from);
         this.names.set(from, String(m.name).slice(0, 16));
-        g.upsertRemote(from, { name: String(m.name).slice(0, 16), look: m.look | 0, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, anim: String(m.anim), downed: !!m.downed });
+        g.upsertRemote(from, { name: String(m.name).slice(0, 16), look: m.look | 0, x: +m.x, y: +m.y, z: +m.z, yaw: +m.yaw, anim: String(m.anim).slice(0, 12), held: String(m.held ?? '').slice(0, 40), off: String(m.off ?? '').slice(0, 40), downed: !!m.downed });
         if (first) this.onToast(`${m.name} ✓`, 'good');
         break;
       }

@@ -20,7 +20,7 @@ export class Input {
       if (!this.keys.has(e.code)) for (const [act, code] of Object.entries(settings.keys)) if (code === e.code) this.pressed.add(act);
       if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 9) this.pressed.add('slot' + (n - 1)); }
       this.keys.add(e.code);
-      if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'F5'].includes(e.code)) e.preventDefault();      // F5 changes the camera here, not reload the page
     });
     addEventListener('keyup', e => this.keys.delete(e.code));
     addEventListener('blur', () => { this.keys.clear(); this.primary = false; this.secondary = false; });
