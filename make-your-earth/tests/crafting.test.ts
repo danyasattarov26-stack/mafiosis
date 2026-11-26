@@ -25,3 +25,31 @@ describe('grid crafting', () => {
     expect(g.filter(Boolean).length).toBe(0);
   });
 });
+
+describe('shaped tools', () => {
+  const P = (k: string) => ({ k, n: 1 });
+  it('a pickaxe needs its shape: three across the top, two sticks down the middle', () => {
+    const g = [P('oak_planks'), P('birch_planks'), P('oak_planks'), null, P('stick'), null, null, P('stick'), null];
+    expect(matchGrid(g, bench)[0]?.r.out).toBe('wooden_pickaxe');
+  });
+  it('the same items in a jumble make no tool', () => {
+    const g = [P('oak_planks'), P('stick'), P('oak_planks'), P('oak_planks'), null, P('stick'), null, null, null];
+    expect(matchGrid(g, bench).some(m => m.r.out.endsWith('_pickaxe'))).toBe(false);
+  });
+  it('an axe works mirrored and anywhere in the grid', () => {
+    const left = [null, P('cobblestone'), P('cobblestone'), null, P('stick'), P('cobblestone'), null, P('stick'), null];
+    const right = [P('cobblestone'), P('cobblestone'), null, P('cobblestone'), P('stick'), null, null, P('stick'), null];
+    expect(matchGrid(left, bench)[0]?.r.out).toBe('stone_axe');
+    expect(matchGrid(right, bench)[0]?.r.out).toBe('stone_axe');
+  });
+  it('tools need a workbench, and crafting takes one from each square', () => {
+    const g = [P('oak_planks'), null, null, P('stick'), null, null, null, null, null];
+    expect(matchGrid(g, hand).some(m => m.r.out === 'wooden_knife')).toBe(false);
+    const m = matchGrid(g, bench).find(x => x.r.out === 'wooden_knife')!;
+    expect(consume(g, m.r)).toBe(true); expect(g.every(x => !x)).toBe(true);
+  });
+  it('armour has shapes too: a helmet is a cap of five', () => {
+    const g = [P('leather'), P('leather'), P('leather'), P('leather'), null, P('leather'), null, null, null];
+    expect(matchGrid(g, bench)[0]?.r.out).toBe('leather_head');
+  });
+});

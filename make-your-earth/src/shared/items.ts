@@ -23,7 +23,12 @@ export interface ItemDef {
   plant?: string;                       // seeds and crops: the first crop block it plants on farmland
   fuel?: number;                        // seconds it burns in a furnace
 }
-export interface Recipe { out: string; n: number; in: Record<string, number>; at: Station; time?: number }
+/**
+  A recipe. Most are shapeless: put the ingredients anywhere in the grid. Tools and armour have a shape:
+  rows of letters, where each letter stands for an ingredient in `key` and a space is an empty square
+  (one item per square; the shape can sit anywhere in the grid and can be mirrored left-to-right).
+*/
+export interface Recipe { out: string; n: number; in: Record<string, number>; at: Station; time?: number; shape?: string[]; key?: Record<string, string> }
 export type Station = 'hand' | 'workbench' | 'furnace' | 'campfire' | 'anvil' | 'lab' | 'blueprint';
 
 export const ITEMS: ItemDef[] = [];
@@ -55,8 +60,8 @@ const TOOL_TYPES: { t: ToolType; en: string; pt: string; mat: number; sticks: nu
   { t: 'sword', en: 'Sword', pt: 'Espada', mat: 2, sticks: 1, dmg: 5 },
   { t: 'hoe', en: 'Hoe', pt: 'Enxada', mat: 2, sticks: 2, dmg: 1 },
   { t: 'knife', en: 'Knife', pt: 'Faca', mat: 1, sticks: 1, dmg: 3 },
-  { t: 'spear', en: 'Spear', pt: 'Lança', mat: 1, sticks: 3, dmg: 4.5 },
-  { t: 'hammer', en: 'Hammer', pt: 'Martelo', mat: 4, sticks: 2, dmg: 3.5 },
+  { t: 'spear', en: 'Spear', pt: 'Lança', mat: 1, sticks: 2, dmg: 4.5 },
+  { t: 'hammer', en: 'Hammer', pt: 'Martelo', mat: 5, sticks: 2, dmg: 3.5 },
 ];
 for (const m of TOOL_MATS) for (const tt of TOOL_TYPES) {
   add({
@@ -224,11 +229,19 @@ R('campfire', 1, { stick: 3, '#log': 1, flint: 1 }); R('thatch', 2, { plant_fibe
 R('herbal_tea', 1, { herbs: 2, clean_water: 1 }); R('bandage', 2, { string: 2, plant_fiber: 2 }); R('berry_juice', 1, { berries: 4, empty_bottle: 1 });
 R('coconut_milk', 1, { coconut: 1, empty_bottle: 1 }); R('seeds', 2, { wheat_item: 1 }); R('flour', 1, { wheat_item: 2 });
 // wood-tier tools and early stations
-for (const m of TOOL_MATS) for (const tt of TOOL_TYPES) {
-  const at: Station = m.tier === 0 ? 'hand' : m.tier === 1 ? 'workbench' : 'anvil';
-  R(`${m.key}_${tt.t}`, 1, { [m.mat]: tt.mat, stick: tt.sticks }, at);
-}
-for (const m of ARMOR_MATS) for (const s of SLOTS) R(`${m.key}_${s.s}`, 1, { [m.mat]: s.n }, m.key === 'leather' || m.key === 'fur' ? 'workbench' : 'anvil');
+// tools and armour are laid out in a shape: M = the material, S = a stick
+export const TOOL_SHAPES: Record<string, string[]> = {
+  pickaxe: ['MMM', ' S ', ' S '], axe: ['MM', 'MS', ' S'], shovel: ['M', 'S', 'S'], sword: ['M', 'M', 'S'],
+  hoe: ['MM', ' S', ' S'], knife: ['M', 'S'], spear: ['  M', ' S ', 'S  '], hammer: ['MMM', 'MSM', ' S '],
+};
+export const ARMOR_SHAPES: Record<string, string[]> = { head: ['MMM', 'M M'], chest: ['M M', 'MMM', 'MMM'], legs: ['MMM', 'M M', 'M M'], feet: ['M M', 'M M'] };
+const shaped = (out: string, shape: string[], key: Record<string, string>, at: Station) => {
+  const ins: Record<string, number> = {};
+  for (const row of shape) for (const ch of row) if (ch !== ' ') ins[key[ch]] = (ins[key[ch]] ?? 0) + 1;
+  RECIPES.push({ out, n: 1, in: ins, at, shape, key });
+};
+for (const m of TOOL_MATS) for (const tt of TOOL_TYPES) shaped(`${m.key}_${tt.t}`, TOOL_SHAPES[tt.t], { M: m.mat, S: 'stick' }, m.tier <= 1 ? 'workbench' : 'anvil');
+for (const m of ARMOR_MATS) for (const s of SLOTS) shaped(`${m.key}_${s.s}`, ARMOR_SHAPES[s.s], { M: m.mat }, m.key === 'leather' || m.key === 'fur' ? 'workbench' : 'anvil');
 // workbench
 R('furnace', 1, { cobblestone: 8 }, 'workbench'); R('chest', 1, { '#planks': 8 }, 'workbench'); R('ladder', 3, { stick: 7 }, 'workbench');
 R('wooden_door', 1, { '#planks': 6 }, 'workbench'); R('stone_bricks', 4, { cobblestone: 4 }, 'workbench'); R('clay_bricks', 1, { brick: 4 }, 'workbench');

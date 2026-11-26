@@ -47,3 +47,4 @@
 31. **The Colossus never leaves its arena and can't be knocked back.** It has three phases (slams, then crystal shard volleys, then wisps), and every phase can be answered: back off or jump, raise a shield, fight the wisps.
 32. **Recoloured animals are recoloured properly.** The animal models use vertex colours, so a new coat colour is painted per vertex while darker details (eyes, noses, hooves) stay darker. That's how a white polar bear comes from the brown bear.
 33. **Health bars respect walls** (they're depth-tested now).
+34. **Tools and armour have shapes; everything else is shapeless.** Shapes can sit anywhere in the grid and be mirrored. Because the shapes need three rows, even wooden tools are made at a workbench now. Spears now take 1 material and 2 sticks, and hammers take 5 material and 2 sticks, to match their shapes.

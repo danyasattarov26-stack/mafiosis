@@ -54,7 +54,12 @@ The journal (J, or 📜 on a phone) shows every step. The goal for right now is 
 
 ## Crafting
 
-Open your bags (E). Put items in the crafting grid (2×2 by hand, 3×3 next to a workbench or another station)
+Open your bags (E). **Tools and armour have shapes**, made at a workbench (bronze and better at an anvil):
+a pickaxe is three of the material across the top and two sticks down the middle, an axe is an L of material with
+two sticks, a sword is two material above a stick, and so on. The recipe book shows each shape as a little 3×3
+picture, and tapping it lays the pattern out for you. Everything else can go anywhere in the grid.
+
+Put items in the crafting grid (2×2 by hand, 3×3 next to a workbench or another station)
 and the result appears on the right: tap it to craft, Shift-click to craft as many as fit. When the same items
 fit more than one recipe (four planks: sticks or a workbench), ⟳ switches between them. The recipe book below
 the grid fills the grid for you from your bags.

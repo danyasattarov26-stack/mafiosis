@@ -7,7 +7,7 @@ import { itemIcon } from '../render/textures';
 import { HOTBAR, SLOTS, ARMOR_SLOTS, type Stack } from '../game/inventory';
 import type { Game } from '../game/game';
 import { sound } from '../audio/audio';
-import { matchGrid, consume, pickIngredients } from '../game/crafting';
+import { matchGrid, consume, pickIngredients, shapedLayout } from '../game/crafting';
 import { CHEST_SLOTS, SMELT_TIME, smeltResult, fuelOf, type Container } from '../game/containers';
 import { builtinBlueprints, myBlueprints, saveBlueprint, deleteBlueprint, type Blueprint } from '../game/blueprints';
 
@@ -218,6 +218,18 @@ export class Hud {
   private fillGrid(r: Recipe) {
     const g = this.game, inv = g.inv, size = this.gridSize();
     this.returnGrid(); this.pick = 0;
+    if (r.shape) {
+      // lay the pattern out square by square
+      const w = Math.max(...r.shape.map(x => x.length));
+      if (size < 3 && (w > 2 || r.shape.length > 2)) { this.toast(t('inv.needBigger'), 'bad'); return; }
+      let missing = false;
+      for (const c of shapedLayout(r, k => inv.count(k), () => inv.all())) {
+        if (inv.count(c.k) < 1) { missing = true; continue; }
+        inv.remove(c.k, 1); this.grid[c.i] = { k: c.k, n: 1 };
+      }
+      if (missing) this.toast(t('inv.missing'), 'bad');
+      return;
+    }
     const parts = pickIngredients(r, k => inv.count(k), () => inv.all());
     if (parts.length > size * size) { this.toast(t('inv.needBigger'), 'bad'); return; }
     let slot = 0, missing = false;
@@ -321,7 +333,13 @@ export class Hud {
       const have = this.game.inv.count(k);
       return `<span class="${have >= n ? 'have' : 'need'}"><img src="${itemIcon(key)}" alt="">${n}</span>`;
     }).join('');
-    return `<div class="recipe ${ok ? 'ok' : ''}" data-recipe="${i}" title="${this.tooltip(r.out)}"><img src="${itemIcon(r.out)}" alt=""><div><b>${esc(nm(ITEM[r.out]))}${r.n > 1 ? ' ×' + r.n : ''}</b><div class="ins">${ins}</div></div></div>`;
+    let pattern = '';
+    if (r.shape) {
+      const cells: string[] = [];
+      for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) { const ch = r.shape[y]?.[x] ?? ' ', k = ch === ' ' ? '' : r.key![ch]; cells.push(`<i>${k ? `<img src="${itemIcon(TAG_ICON[k] ?? k)}" alt="">` : ''}</i>`); }
+      pattern = `<div class="pattern">${cells.join('')}</div>`;
+    }
+    return `<div class="recipe ${ok ? 'ok' : ''}" data-recipe="${i}" title="${this.tooltip(r.out)}"><img src="${itemIcon(r.out)}" alt=""><div><b>${esc(nm(ITEM[r.out]))}${r.n > 1 ? ' ×' + r.n : ''}</b><div class="ins">${ins}</div></div>${pattern}</div>`;
   }
   private getSlot(id: string): Stack | null {
     const inv = this.game.inv, c = this.cont();
