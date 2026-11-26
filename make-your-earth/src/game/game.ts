@@ -346,6 +346,7 @@ export class Game {
   private fpHemi = new THREE.HemisphereLight('#cfe4ff', '#5a4a3a', 1.6); private fpSun = new THREE.DirectionalLight('#fff3dd', 1.4);
   /** draw the world, then your hands on top */
   render(r: THREE.WebGLRenderer) {
+    r.info.autoReset = false; r.info.reset();          // count both passes in the stats
     r.autoClear = false; r.clear();
     r.render(this.scene, this.camera);
     this.fpCam.aspect = this.camera.aspect; this.fpCam.fov = this.camera.fov; this.fpCam.updateProjectionMatrix();
