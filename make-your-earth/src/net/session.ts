@@ -1,6 +1,7 @@
 /* A co-op session: the host shares the world (seed + edits), everyone shares their position, and the host
    runs the animals. Limits the room to 5 players. Guests spawn next to the host. */
 import { Room, MAX_PLAYERS, clean, type Msg } from './coop';
+import * as THREE from 'three';
 import type { Game, Grave, SaveData } from '../game/game';
 import { settings } from '../game/settings';
 
@@ -54,6 +55,17 @@ export class Session {
     game.giveTo = (peer, items) => this.room.send({ k: 'give', items }, peer);
     game.net.blockdef = c => this.room.send({ k: 'blockdef', c }, this.hostPeer ?? undefined);
     game.net.blockdefs = list => this.room.send({ k: 'blockdefs', list });
+    const host = () => this.hostPeer ?? undefined;
+    game.net.hurt = (peer, dmg, from) => this.room.send({ k: 'hurt', dmg, x: from.x, y: from.y, z: from.z }, peer);
+    game.net.arrow = (from, vel) => this.room.send({ k: 'arrow', p: [from.x, from.y, from.z], v: [vel.x, vel.y, vel.z] });
+    game.net.cont = (key, c) => this.room.send({ k: 'cont', key, c });
+    game.net.crop = (key, t) => this.room.send({ k: 'crop', key, t });
+    game.net.sleep = () => this.room.send({ k: 'sleep' }, host());
+    game.net.tame = id => this.room.send({ k: 'tame', id }, host());
+    game.net.saddle = id => this.room.send({ k: 'saddle', id }, host());
+    let rideT = 0;
+    game.net.ride = b => { const now = performance.now(); if (now - rideT < 90) return; rideT = now; this.room.send({ k: 'ride', id: b.id, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, anim: b.cur }, host()); };
+    game.onSlept = () => this.syncTime();
     this.room.onJoin = peer => {
       if (this.host) return;   // hosts wait for hello
       this.room.send({ k: 'state', ...game.myState() }, peer);
@@ -102,7 +114,15 @@ export class Session {
         else if (m.g && !g.graves.some(q => q.id === m.g.id)) g.graves.push(m.g as Grave);
         break;
       }
-      case 'time': if (!this.host) { g.time = +m.time; g.weather = m.weather; } break;
+      case 'time': if (!this.host) { const jump = +m.time - g.time > 60; g.time = +m.time; g.weather = m.weather; if (jump) g.sleepFade = 1.6; } break;
+      case 'hurt': if (!this.host && from === this.hostPeer) g.hurtBy(Math.min(40, +m.dmg || 0), new THREE.Vector3(+m.x, +m.y, +m.z), false); break;
+      case 'arrow': if (Array.isArray(m.p) && Array.isArray(m.v)) g.projectiles.fire(new THREE.Vector3(+m.p[0], +m.p[1], +m.p[2]), new THREE.Vector3(+m.v[0], +m.v[1], +m.v[2]), 'ghost', 0); break;
+      case 'cont': if (typeof m.key === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(m.key) && (m.c === null || (m.c && (m.c.kind === 'chest' || m.c.kind === 'furnace')))) g.setContainer(m.key, m.c); break;
+      case 'crop': if (typeof m.key === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(m.key)) g.setCrop(m.key, m.t == null ? null : +m.t); break;
+      case 'sleep': if (this.host && g.sunLevel <= 0.35) g.skipNight(); break;
+      case 'tame': if (this.host) { const b = g.animals.list.find(q => q.id === m.id); if (b) g.animals.tame(b, from); } break;
+      case 'saddle': if (this.host) { const b = g.animals.list.find(q => q.id === m.id); if (b) g.animals.saddle(b); } break;
+      case 'ride': if (this.host) g.animals.rideRemote(String(m.id), +m.x, +m.y, +m.z, +m.yaw, String(m.anim || '')); break;
       case 'revive': if (m.target === 'me') g.revive(); break;
       case 'chat': {
         if (this.muted.has(from) || this.blocked.has(from)) return;

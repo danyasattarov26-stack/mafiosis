@@ -6,7 +6,7 @@
 */
 import { BLOCKS, BLOCK_ID, type BlockDef } from './blocks';
 import { ITEMS, ITEM, RECIPES, type Recipe, type Station } from './items';
-import { TILES, BLOCK_TILES } from '../world/tiles';
+import { TILES, BLOCK_TILES, ATLAS_COLS, ATLAS_ROWS } from '../world/tiles';
 
 export type BlockFunction = 'solid' | 'light' | 'glass' | 'door' | 'ladder' | 'conveyor' | 'flammable' | 'explosive' | 'storage';
 export const FUNCTIONS: BlockFunction[] = ['solid', 'light', 'glass', 'door', 'ladder', 'conveyor', 'flammable', 'explosive', 'storage'];
@@ -35,7 +35,7 @@ export function resetCustom() {
 /** add a custom block to the registries; returns its block id and the atlas tiles to paint, or null if full */
 export function registerCustom(c: CustomBlock): { id: number; tiles: number[] } | null {
   if (BLOCK_ID[c.key] != null) return { id: BLOCK_ID[c.key], tiles: BLOCK_TILES[BLOCK_ID[c.key]] as number[] };
-  if (BLOCKS.length >= MAX_BLOCKS || TILES.length + 6 > 512) return null;
+  if (BLOCKS.length >= MAX_BLOCKS || TILES.length + 6 > ATLAS_COLS * ATLAS_ROWS) return null;
   const id = BLOCKS.length;
   const tiles = [0, 1, 2, 3, 4, 5].map(f => { TILES.push({ p: 'noise', c: ['#000'] }); return TILES.length - 1; });
   const def: BlockDef = {

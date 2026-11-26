@@ -8,6 +8,7 @@ import { BLOCKS } from './blocks';
 
 export type Kind = 'block' | 'tool' | 'weapon' | 'food' | 'drink' | 'medicine' | 'material' | 'armor' | 'misc';
 export type ToolType = 'axe' | 'pickaxe' | 'shovel' | 'sword' | 'hoe' | 'knife' | 'spear' | 'hammer';
+export interface Shield { block: number; durability: number }
 export interface ItemDef {
   key: string; en: string; pt: string; kind: Kind;
   color: string; color2?: string;      // icon colours (icons are drawn in code)
@@ -18,6 +19,9 @@ export interface ItemDef {
   food?: { hunger?: number; thirst?: number; health?: number; sick?: number; cure?: number; warm?: number };
   armor?: { slot: 'head' | 'chest' | 'legs' | 'feet'; defense: number; warmth: number; durability: number };
   tags?: string[]; era?: number;
+  shield?: Shield;                      // off-hand shields: share of a frontal hit they stop
+  plant?: string;                       // seeds and crops: the first crop block it plants on farmland
+  fuel?: number;                        // seconds it burns in a furnace
 }
 export interface Recipe { out: string; n: number; in: Record<string, number>; at: Station; time?: number }
 export type Station = 'hand' | 'workbench' | 'furnace' | 'campfire' | 'anvil' | 'lab' | 'blueprint';
@@ -26,7 +30,7 @@ export const ITEMS: ItemDef[] = [];
 const add = (d: ItemDef) => { ITEMS.push(d); return d; };
 
 // ---- every block that can be held ----
-const NOT_ITEMS = new Set(['air', 'water', 'lava', 'fire', 'grave', 'bedrock']);
+const NOT_ITEMS = new Set(['air', 'water', 'lava', 'fire', 'grave', 'bedrock', 'wooden_door_open', 'wheat_crop_0', 'wheat_crop_1', 'wheat_crop_2', 'carrot_crop_0', 'carrot_crop_1', 'carrot_crop_2', 'potato_crop_0', 'potato_crop_1', 'potato_crop_2']);
 BLOCKS.forEach((b, id) => {
   if (NOT_ITEMS.has(b.key)) return;
   const tags: string[] = [];
@@ -110,6 +114,14 @@ const FOODS: ItemDef[] = [
   { key: 'honey', en: 'Honey', pt: 'Mel', kind: 'food', color: '#f0b030', icon: 'jar', stack: 16, food: { hunger: 10, health: 2, cure: 0.2 } },
   { key: 'salt', en: 'Salt', pt: 'Sal', kind: 'material', color: '#f2eef0', icon: 'powder', stack: 64 },
   { key: 'flour', en: 'Flour', pt: 'Farinha', kind: 'material', color: '#f0ead8', icon: 'powder', stack: 64 },
+  { key: 'rotten_flesh', en: 'Rotten Flesh', pt: 'Carne Podre', kind: 'food', color: '#7a8a4a', color2: '#5a3a2a', icon: 'meat', stack: 64, food: { hunger: 6, sick: 0.7 } },
+  { key: 'spider_eye', en: 'Spider Eye', pt: 'Olho de Aranha', kind: 'food', color: '#a8203a', icon: 'berries', stack: 64, food: { hunger: 2, sick: 0.8 } },
+  { key: 'glow_cap', en: 'Glow Cap', pt: 'Cogumelo Luminoso', kind: 'food', color: '#3fd8e8', icon: 'mushroom', stack: 64, food: { hunger: 3, cure: 0.15 } },
+  { key: 'mushroom_soup', en: 'Mushroom Soup', pt: 'Sopa de Cogumelos', kind: 'food', color: '#b89070', icon: 'bowl', stack: 8, food: { hunger: 28, thirst: 12, health: 4, warm: 3 } },
+  { key: 'pumpkin_pie', en: 'Pumpkin Pie', pt: 'Tarte de Abóbora', kind: 'food', color: '#e8862a', color2: '#c8903e', icon: 'pie', stack: 16, food: { hunger: 30, health: 4 } },
+  { key: 'apple_pie', en: 'Apple Pie', pt: 'Tarte de Maçã', kind: 'food', color: '#d8a050', color2: '#a8702e', icon: 'pie', stack: 16, food: { hunger: 32, health: 4 } },
+  { key: 'golden_apple', en: 'Golden Apple', pt: 'Maçã Dourada', kind: 'food', color: '#f5d04a', icon: 'fruit', stack: 16, food: { hunger: 12, health: 45, cure: 1 } },
+  { key: 'carrot_soup', en: 'Carrot Soup', pt: 'Sopa de Cenoura', kind: 'food', color: '#f08a2a', icon: 'bowl', stack: 8, food: { hunger: 26, thirst: 14, health: 3, warm: 3 } },
   { key: 'snowball', en: 'Snowball', pt: 'Bola de Neve', kind: 'misc', color: '#f4f8fb', icon: 'ball', stack: 16 },
 ];
 FOODS.forEach(add);
@@ -150,8 +162,17 @@ FOODS.forEach(add);
   ['gear', 'Gear', 'Engrenagem', '#9aa3ad', 'gear'], ['copper_wire', 'Copper Wire', 'Fio de Cobre', '#d9874a', 'rope'], ['circuit', 'Circuit Board', 'Placa de Circuito', '#2f8a4a', 'chip'],
   ['battery', 'Battery', 'Bateria', '#2f5d9a', 'box'], ['plastic', 'Plastic', 'Plástico', '#e8e8f0', 'ingot'], ['oil', 'Crude Oil', 'Petróleo', '#1a1a1c', 'jar'],
   ['fuel', 'Fuel Can', 'Bidão de Combustível', '#c8302a', 'box'], ['blueprint_paper', 'Blueprint Paper', 'Papel de Planta', '#2f6db3', 'paper'], ['paper', 'Paper', 'Papel', '#f2eee6', 'paper'],
+  ['crystal_shard', 'Crystal Shard', 'Fragmento de Cristal', '#b07af0', 'gem'], ['blue_petals', 'Blue Petals', 'Pétalas Azuis', '#4a6ae8', 'herb'],
   ['ink', 'Ink', 'Tinta', '#1a1a2a', 'jar'], ['journal', 'Research Journal', 'Diário de Investigação', '#5e3f22', 'book'], ['coin', 'Coin', 'Moeda', '#f5d04a', 'coin'],
 ].forEach(([key, en, pt, color, icon]) => add({ key, en, pt, kind: 'material', color, icon, stack: 64 }));
+
+// ---- dyes (from flowers and minerals) colour wool, glass, concrete and terracotta ----
+export const DYES = [
+  { k: 'red', en: 'Red', pt: 'Vermelho', c: '#c8302a' }, { k: 'orange', en: 'Orange', pt: 'Laranja', c: '#f08a2a' }, { k: 'yellow', en: 'Yellow', pt: 'Amarelo', c: '#f2d23a' },
+  { k: 'green', en: 'Green', pt: 'Verde', c: '#5ab83a' }, { k: 'blue', en: 'Blue', pt: 'Azul', c: '#3a5ac8' }, { k: 'purple', en: 'Purple', pt: 'Roxo', c: '#8a3ac8' },
+  { k: 'pink', en: 'Pink', pt: 'Cor-de-rosa', c: '#f09ab8' }, { k: 'black', en: 'Black', pt: 'Preto', c: '#2a2a2e' }, { k: 'white', en: 'White', pt: 'Branco', c: '#f2eee6' },
+];
+for (const d of DYES) add({ key: `${d.k}_dye`, en: `${d.en} Dye`, pt: `Corante ${d.pt}`, kind: 'material', color: d.c, icon: 'dye', stack: 64, tags: ['dye'] });
 
 // ---- misc gear ----
 [
@@ -166,10 +187,21 @@ FOODS.forEach(add);
   { key: 'harness', en: 'Harness', pt: 'Arreio', kind: 'misc', color: '#6b3a1e', icon: 'rope', stack: 1 },
   { key: 'flint_and_steel', en: 'Fire Starter', pt: 'Isqueiro de Sílex', kind: 'tool', color: '#4a4b50', icon: 'flint', stack: 1 },
   { key: 'oxygen_tank', en: 'Oxygen Tank', pt: 'Garrafa de Oxigénio', kind: 'misc', color: '#e8eef2', icon: 'box', stack: 1, era: 5 },
+  { key: 'wooden_shield', en: 'Wooden Shield', pt: 'Escudo de Madeira', kind: 'misc', color: '#a8834f', color2: '#5e3f22', icon: 'shield', stack: 1, shield: { block: 0.55, durability: 120 } },
+  { key: 'iron_shield', en: 'Iron Shield', pt: 'Escudo de Ferro', kind: 'misc', color: '#9aa3ad', color2: '#4a4d52', icon: 'shield', stack: 1, shield: { block: 0.8, durability: 400 }, era: 2 },
+  { key: 'shears', en: 'Shears', pt: 'Tesoura de Tosquia', kind: 'tool', color: '#cfd3d8', color2: '#6b4a2b', icon: 'shears', stack: 1 },
   { key: 'mammoth_trophy', en: 'Mammoth Trophy', pt: 'Troféu de Mamute', kind: 'misc', color: '#f2ead6', icon: 'bone', stack: 1 },
 ].forEach(d => add(d as ItemDef));
 
 export const ITEM: Record<string, ItemDef> = Object.fromEntries(ITEMS.map(i => [i.key, i]));
+// what you plant on farmland, and what burns in a furnace
+ITEM.seeds.plant = 'wheat_crop_0'; ITEM.carrot.plant = 'carrot_crop_0'; ITEM.potato.plant = 'potato_crop_0';
+for (const it of ITEMS) {
+  if (it.tags?.includes('log')) it.fuel = 15;
+  else if (it.tags?.includes('planks')) it.fuel = 8;
+}
+Object.assign(ITEM.coal, { fuel: 80 }); Object.assign(ITEM.charcoal, { fuel: 80 }); Object.assign(ITEM.stick, { fuel: 3 }); Object.assign(ITEM.fuel, { fuel: 300 });
+Object.assign(ITEM.plant_fiber, { fuel: 2 }); Object.assign(ITEM.thatch, { fuel: 4 }); Object.assign(ITEM.hay_bale, { fuel: 20 }); Object.assign(ITEM.oil, { fuel: 200 });
 export const itemsWithTag = (tag: string) => ITEMS.filter(i => i.tags?.includes(tag));
 
 // =================== recipes ===================
@@ -178,7 +210,7 @@ const R = (out: string, n: number, inp: Record<string, number>, at: Station = 'h
 
 // basics by hand
 R('oak_planks', 4, { oak_log: 1 }); R('birch_planks', 4, { birch_log: 1 }); R('pine_planks', 4, { pine_log: 1 });
-R('oak_planks', 4, { jungle_log: 1 }); R('oak_planks', 4, { acacia_log: 1 }); R('birch_planks', 4, { palm_log: 1 });
+R('jungle_planks', 4, { jungle_log: 1 }); R('acacia_planks', 4, { acacia_log: 1 }); R('palm_planks', 4, { palm_log: 1 });
 R('stick', 4, { '#planks': 2 }); R('string', 1, { plant_fiber: 3 }); R('rope', 1, { string: 3 });
 R('workbench', 1, { '#planks': 4 }); R('torch', 4, { stick: 1, coal: 1 }); R('torch', 4, { stick: 1, charcoal: 1 });
 R('campfire', 1, { stick: 3, '#log': 1, flint: 1 }); R('thatch', 2, { plant_fiber: 4 }); R('flint_and_steel', 1, { flint: 1, iron_nugget: 1 });
@@ -200,7 +232,7 @@ R('journal', 1, { paper: 6, leather: 1 }, 'workbench'); R('wool', 1, { string: 4
 R('leather', 1, { hide: 1, salt: 1 }, 'workbench'); R('anvil', 1, { iron_ingot: 6, cobblestone: 4 }, 'workbench'); R('compass', 1, { iron_ingot: 2, copper_wire: 1 }, 'workbench');
 R('stew', 1, { '#cooked_meat': 1, potato: 1, carrot: 1, clean_water: 1 }, 'campfire'); R('fish_soup', 1, { cooked_fish: 2, clean_water: 1, salt: 1 }, 'campfire');
 R('jerky', 3, { '#raw_meat': 2, salt: 1 }, 'workbench'); R('blueprint_paper', 2, { paper: 2, ink: 1 }, 'workbench'); R('snow_bricks', 1, { snowball: 4 }); R('mossy_bricks', 1, { stone_bricks: 1, plant_fiber: 2 }, 'workbench');
-R('chiseled_sandstone', 2, { sandstone: 2 }, 'workbench'); R('hay_bale', 1, { wheat_item: 9 }); R('bookshelf', 1, { '#planks': 6, paper: 6 }, 'workbench'); R('cracked_bricks', 1, { stone_bricks: 1 }, 'furnace'); R('tiles', 4, { clay_ball: 2, glass_pane: 1 }, 'furnace');
+R('chiseled_sandstone', 2, { sandstone: 2 }, 'workbench'); R('hay_bale', 1, { wheat_item: 9 }); R('bookshelf', 1, { '#planks': 6, paper: 6 }, 'workbench'); R('cracked_bricks', 1, { stone_bricks: 1 }, 'furnace'); R('tiles', 4, { clay_ball: 2, glass_pane: 1 }, 'workbench');
 // cooking: every raw meat can be cooked at a campfire or furnace
 for (const m of MEATS) { R(`cooked_${m.k}`, 1, { [`raw_${m.k}`]: 1 }, 'campfire'); R(`cooked_${m.k}`, 1, { [`raw_${m.k}`]: 1 }, 'furnace'); }
 R('clean_water', 1, { dirty_water: 1 }, 'campfire'); R('clean_water', 1, { dirty_water: 1 }, 'furnace'); R('baked_potato', 1, { potato: 1 }, 'campfire');
@@ -209,7 +241,7 @@ R('bread', 1, { flour: 2 }, 'furnace'); R('bread', 1, { flour: 2 }, 'campfire');
 R('charcoal', 1, { '#log': 1 }, 'furnace'); R('copper_ingot', 1, { raw_copper: 1 }, 'furnace'); R('tin_ingot', 1, { raw_tin: 1 }, 'furnace');
 R('iron_ingot', 1, { raw_iron: 1 }, 'furnace'); R('gold_ingot', 1, { raw_gold: 1 }, 'furnace'); R('glass', 1, { sand: 1 }, 'furnace');
 R('brick', 1, { clay_ball: 1 }, 'furnace'); R('stone', 1, { cobblestone: 1 }, 'furnace'); R('empty_bottle', 2, { glass: 1 }, 'furnace');
-R('glass_pane', 4, { glass: 2 }, 'furnace'); R('salt', 2, { salt_rock: 1 }, 'furnace'); R('cement', 2, { cobblestone: 2, clay_ball: 1, sand: 1 }, 'furnace');
+R('glass_pane', 4, { glass: 2 }, 'furnace'); R('salt', 2, { salt_rock: 1 }, 'furnace'); R('cement', 2, { cobblestone: 2, clay_ball: 1, sand: 1 }, 'workbench');
 // anvil: metal work
 R('bronze_ingot', 4, { copper_ingot: 3, tin_ingot: 1 }, 'anvil'); R('steel_ingot', 1, { iron_ingot: 2, coal: 2 }, 'anvil'); R('iron_nugget', 9, { iron_ingot: 1 }, 'anvil');
 R('gold_nugget', 9, { gold_ingot: 1 }, 'anvil'); R('iron_block', 1, { iron_ingot: 9 }, 'anvil'); R('copper_block', 1, { copper_ingot: 9 }, 'anvil');
@@ -221,3 +253,23 @@ R('first_aid_kit', 1, { bandage: 2, medicine: 1, leather: 1 }, 'lab'); R('circui
 R('plastic', 2, { oil: 1 }, 'lab'); R('fuel', 1, { oil: 2, empty_bottle: 1 }, 'lab'); R('tnt', 1, { gunpowder: 4, sand: 2 }, 'lab');
 R('concrete', 4, { cement: 2, gravel: 1, clean_water: 1 }, 'lab'); R('reinforced_concrete', 4, { concrete: 4, rebar: 2 }, 'lab'); R('air_filter', 1, { iron_ingot: 4, circuit: 1, plant_fiber: 8 }, 'lab');
 R('blast_door', 1, { steel_ingot: 8, reinforced_concrete: 2, gear: 2 }, 'lab'); R('oxygen_tank', 1, { steel_ingot: 4, circuit: 1 }, 'lab'); R('saltpeter', 1, { bone: 2, mud: 1 }, 'lab');
+
+// ---- v3: dyes, colours, furniture, farming food, combat gear ----
+R('red_dye', 2, { flower_red: 1 }); R('yellow_dye', 2, { flower_yellow: 1 }); R('blue_dye', 2, { blue_petals: 1 }); R('white_dye', 3, { bone: 1 });
+R('black_dye', 2, { coal: 1 }); R('black_dye', 2, { ink: 1 }); R('orange_dye', 2, { red_dye: 1, yellow_dye: 1 }); R('purple_dye', 2, { red_dye: 1, blue_dye: 1 });
+R('pink_dye', 2, { red_dye: 1, white_dye: 1 }); R('green_dye', 2, { yellow_dye: 1, blue_dye: 1 }); R('green_dye', 1, { cactus: 1 }, 'furnace');
+R('purple_dye', 2, { crystal_shard: 1 });
+for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'black']) R(`wool_${c}`, 1, { wool: 1, [`${c}_dye`]: 1 });
+for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple']) R(`glass_${c}`, 4, { glass: 4, [`${c}_dye`]: 1 }, 'workbench');
+for (const c of ['white', 'red', 'yellow', 'green', 'blue', 'black']) R(`concrete_${c}`, 4, { concrete: 4, [`${c}_dye`]: 1 }, 'workbench');
+for (const c of ['white', 'red', 'blue']) R(`terracotta_${c}`, 4, { terracotta: 4, [`${c}_dye`]: 1 }, 'workbench');
+R('terracotta', 1, { clay: 1 }, 'furnace'); R('smooth_stone', 1, { stone: 1 }, 'furnace'); R('polished_granite', 4, { granite: 4 }, 'workbench'); R('polished_marble', 4, { marble: 4 }, 'workbench');
+R('window', 4, { glass: 4, '#planks': 2 }, 'workbench'); R('iron_bars', 8, { iron_ingot: 3 }, 'anvil'); R('lantern', 1, { iron_nugget: 4, torch: 1 }, 'workbench');
+R('lantern', 1, { iron_nugget: 4, crystal_shard: 1 }, 'workbench'); R('glow_crystal', 1, { crystal_shard: 4 }, 'workbench');
+R('bed', 1, { wool: 3, '#planks': 3 }, 'workbench'); R('crate', 2, { '#planks': 4, stick: 4 }, 'workbench'); R('barrel', 1, { '#planks': 6, iron_nugget: 2 }, 'workbench');
+R('moss_block', 1, { cobblestone: 1, plant_fiber: 4 }); R('mossy_cobble', 1, { cobblestone: 1, moss_block: 1 });
+R('wooden_shield', 1, { '#planks': 5, iron_nugget: 1 }, 'workbench'); R('iron_shield', 1, { iron_ingot: 5, leather: 1 }, 'anvil'); R('shears', 1, { iron_ingot: 2 }, 'anvil');
+R('arrow', 4, { stick: 1, flint: 1, string: 1 }, 'workbench'); R('arrow', 6, { stick: 2, iron_nugget: 1, feather: 2 }, 'workbench');
+R('mushroom_soup', 1, { mushroom: 3, clean_water: 1 }, 'campfire'); R('carrot_soup', 1, { carrot: 3, clean_water: 1 }, 'campfire');
+R('pumpkin_pie', 1, { pumpkin: 1, flour: 1 }, 'campfire'); R('apple_pie', 1, { apple: 3, flour: 1 }, 'campfire'); R('golden_apple', 1, { apple: 1, gold_nugget: 8 }, 'workbench');
+R('seeds', 4, { pumpkin: 1 }); R('string', 2, { cobweb: 1 }); R('leather', 1, { rotten_flesh: 4, salt: 1 }, 'workbench');

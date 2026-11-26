@@ -9,4 +9,4 @@ const tileOf = (t: Tex) => { const k = JSON.stringify(t); let i = seen.get(k); i
 export const BLOCK_TILES: [number, number, number][] = BLOCKS.map(b => [tileOf(b.top), tileOf(b.side ?? b.top), tileOf(b.bottom ?? b.top)]);
 /** extra tiles for custom blocks made in the Block Maker are appended at runtime after these */
 export const BASE_TILE_COUNT = TILES.length;
-export const ATLAS_ROWS = 32;   // 16 × 32 = 512 tiles of room
+export const ATLAS_ROWS = 64;   // 16 × 64 = 1024 tiles of room (custom blocks use six each)

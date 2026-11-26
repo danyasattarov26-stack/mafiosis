@@ -86,7 +86,7 @@ code, .mycode { font-family: ui-monospace, monospace; background: rgba(255, 255,
 .toast { background: rgba(12, 17, 27, 0.88); padding: 7px 14px; border-radius: 10px; font-size: 14px; transition: opacity 0.4s; animation: pop 0.2s; }
 .toast.good { border-left: 3px solid var(--acc); } .toast.bad { border-left: 3px solid var(--bad); } .toast.out { opacity: 0; }
 @keyframes pop { from { transform: scale(0.85); opacity: 0; } }
-.vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, transparent 45%, rgba(180, 0, 0, 0.75)); transition: opacity 0.15s; }
+.vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, rgba(200, 0, 0, 0.18) 30%, rgba(190, 0, 0, 0.85)); transition: opacity 0.08s; pointer-events: none; }
 .revive { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); text-align: center; background: rgba(12, 17, 27, 0.8); padding: 14px 20px; border-radius: 14px; pointer-events: auto; }
 .revive b { font-size: 22px; color: var(--bad); }
 .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0b0f17; pointer-events: auto; }
@@ -180,3 +180,15 @@ canvas.prev { width: 220px; height: 220px; background: radial-gradient(circle, #
   .admin-cols { grid-template-columns: 1fr; }
   canvas.pix { width: 240px; height: 240px; } .bm-edit { width: 250px; } .bm-prev { width: 160px; } canvas.prev { width: 160px; height: 160px; }
 }
+
+/* sleeping, chests and furnaces */
+.fade { position: absolute; inset: 0; background: #05070c; opacity: 0; pointer-events: none; }
+.furnace { display: flex; align-items: center; gap: 18px; margin: 10px 0 6px; }
+.furnace .fcol { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.furnace small { color: #9fb0c8; font-size: 12px; }
+.furnace .flame { width: 14px; height: 26px; border-radius: 4px; background: #1b2230; position: relative; overflow: hidden; }
+.furnace .flame i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#ffd24a, #ff6a1a); }
+.furnace .farrow { width: 70px; height: 14px; border-radius: 7px; background: #1b2230; position: relative; }
+.furnace .farrow i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; background: #e8e2d0; }
+.furnace .farrow img { position: absolute; right: -6px; top: -26px; width: 22px; height: 22px; image-rendering: pixelated; opacity: 0.6; }
+.slot.big { width: 56px; height: 56px; }

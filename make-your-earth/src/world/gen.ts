@@ -9,7 +9,7 @@ import { siteAt, rotate, CELL, type Site } from './structures';
 
 export const CS = 16, CH = 256, SEA = 62;
 export const idx = (x: number, y: number, z: number) => x + z * CS + y * CS * CS;
-const PLANTS = new Set([B.tall_grass, B.flower_red, B.flower_yellow, B.berry_bush, B.dead_bush, B.fern, B.wheat]);
+const PLANTS = new Set([B.tall_grass, B.flower_red, B.flower_yellow, B.berry_bush, B.dead_bush, B.fern, B.wheat, B.flower_blue, B.carrot_crop_2, B.potato_crop_2]);
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.pine_leaves, B.jungle_leaves, B.acacia_leaves, B.palm_leaves]);
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -17,10 +17,24 @@ export interface Column { h: number; biome: number; river: number }
 
 export class TerrainGen {
   private nc: Noise; private ne: Noise; private nm: Noise; private nr: Noise; private nt: Noise; private nh: Noise; private nriv: Noise; private ncave: Noise; private ncave2: Noise;
+  private nw1: Noise; private nw2: Noise; private ncav: Noise; private nrav: Noise; private nravm: Noise; private nlake: Noise;
   private B = BIOME_ID;
   constructor(public seed: number) {
     this.nc = new Noise(seed); this.ne = new Noise(seed + 1); this.nm = new Noise(seed + 2); this.nr = new Noise(seed + 3);
     this.nt = new Noise(seed + 4); this.nh = new Noise(seed + 5); this.nriv = new Noise(seed + 6); this.ncave = new Noise(seed + 7); this.ncave2 = new Noise(seed + 8);
+    this.nw1 = new Noise(seed + 21); this.nw2 = new Noise(seed + 22); this.ncav = new Noise(seed + 23); this.nrav = new Noise(seed + 24); this.nravm = new Noise(seed + 25); this.nlake = new Noise(seed + 26);
+  }
+
+  /** ravines: long, narrow, deep cracks across dry land. Returns the lowest carved y (or 999) and how central we are (0..1). */
+  ravine(x: number, z: number, h: number, river: number) {
+    if (river || h < SEA + 3) return null;
+    const v = Math.abs(this.nrav.fbm(x / 340, z / 340, 2)), W = 0.016;
+    if (v >= W) return null;
+    const mask = this.nravm.n2(x / 600, z / 600);
+    if (mask < 0.25) return null;
+    const c = 1 - v / W;                                           // 1 in the middle, 0 at the edge
+    const floor = 16 + Math.floor((this.nravm.n2(x / 90 + 50, z / 90) + 1) * 9);
+    return { floor: Math.round(floor + (1 - c) * (h - floor) * 0.9), c };
   }
 
   /** height and biome of one column (cheap, used for trees, the map and spawning) */
@@ -65,6 +79,10 @@ export class TerrainGen {
       const col = cols[x + z * CS], bio = BIOMES[col.biome], wx = ox + x, wz = oz + z;
       const h = col.h, top = B[bio.top], under = B[bio.under], deep = bio.deep ? B[bio.deep] : B.stone;
       const tundra = col.biome === this.B.tundra;
+      const rav = this.ravine(wx, wz, h, col.river);
+      const lake = this.nlake.n2(wx / 80, wz / 80);
+      // a few tunnels open onto dry land so caves can be found from the surface
+      const openTop = h > SEA + 4 && !col.river && hash2(wx >> 4, wz >> 4, seed + 41) < 0.35 ? 4 : 0;
       for (let y = 0; y <= Math.max(h, SEA); y++) {
         let id = 0;
         if (y === 0 || (y < 3 && hash3(wx, y, wz, seed) < 0.5)) id = B.bedrock;
@@ -77,12 +95,24 @@ export class TerrainGen {
         if (col.biome === this.B.mountains && y === h && h > SEA + 62) id = B.snow;
         if (col.biome === this.B.mountains && y === h && h <= SEA + 62 && h < SEA + 48) id = B.grass;
         if (id === B.stone) id = this.ore(wx, y, wz, col.biome);
-        // caves (never break through the sea floor)
-        if (id !== 0 && id !== B.bedrock && id !== B.water && y > 4 && y < h - 3) {
+        // caves: three layers of winding tunnels, big caverns and the odd opening to the sky
+        if (id !== 0 && id !== B.bedrock && id !== B.water && y > 4 && y < h - 3 + openTop) {
+          let air = false;
           const a = this.ncave.n3(wx / 34, y / 22, wz / 34), b2 = this.ncave2.n3(wx / 34, y / 22, wz / 34);
-          if (a * a + b2 * b2 < 0.0095) id = y < 11 ? B.lava : 0;
+          if (a * a + b2 * b2 < 0.0095) air = true;
+          else if (y < 64) {
+            const p = this.nw1.n3(wx / 46, y / 18, wz / 46), q = this.nw2.n3(wx / 46, y / 18, wz / 46);
+            if (p * p + q * q < 0.006 + (y < 30 ? 0.004 : 0)) air = true;
+            else if (y > 9 && y < 52 && y < h - 10) {
+              // caverns: huge open rooms, flatter on the floor
+              const cv = this.ncav.n3(wx / 70, y / 26, wz / 70) - Math.max(0, 22 - y) * 0.015;
+              if (cv > 0.52) air = true;
+            }
+          }
+          if (air) id = y < 11 ? B.lava : (y < 22 && lake > 0.25 && y < h - 12) ? B.water : 0;
         }
-        d[idx(x, y, z)] = id;
+        // ravines
+        if (rav && y >= rav.floor && y <= h && id !== B.bedrock) id = y < 12 ? B.lava : 0;        d[idx(x, y, z)] = id;
       }
       // plants on the surface
       const sy = h + 1;
@@ -103,8 +133,30 @@ export class TerrainGen {
         r -= t.chance;
       }
     }
+    this.decorateCaves(d, cols, ox, oz);
     this.structures(d, ox, oz);
     return d;
+  }
+
+  /** cave life: glowing crystals on ceilings, crystal clusters, mushrooms and cobwebs on floors, moss by water */
+  private decorateCaves(d: Uint8Array, cols: Column[], ox: number, oz: number) {
+    const seed = this.seed;
+    for (let z = 0; z < CS; z++) for (let x = 0; x < CS; x++) {
+      const h = cols[x + z * CS].h, wx = ox + x, wz = oz + z;
+      for (let y = 6; y < Math.min(h - 6, 70); y++) {
+        const i = idx(x, y, z); if (d[i] !== 0) continue;
+        const below = d[i - CS * CS], above = d[i + CS * CS];
+        const r = hash3(wx, y, wz, seed + 61);
+        if (below === B.stone || below === B.granite || below === B.basalt) {
+          if (y < 40 && r < 0.012) d[i] = B.crystal_cluster;
+          else if (r < 0.02) d[i] = B.glow_mushroom;
+          else if (r < 0.032) d[i] = r < 0.026 ? B.brown_mushroom : B.red_mushroom;
+          else if (r > 0.994) d[i] = B.cobweb;
+          else if (r > 0.96 && (d[i - 1] === B.water || d[i + 1] === B.water)) d[i - CS * CS] = B.moss_block;
+        } else if ((above === B.stone || above === B.granite) && y < 45 && r < 0.01) d[i + CS * CS] = B.glow_crystal;
+        else if (above !== 0 && above !== B.water && r > 0.993) d[i] = B.cobweb;
+      }
+    }
   }
 
   // ---------------- structures ----------------

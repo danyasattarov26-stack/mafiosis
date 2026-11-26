@@ -318,5 +318,61 @@
   "license": "CC0 1.0",
   "url": "https://freesound.org/people/SyntaxSeed/sounds/871238/",
   "seconds": 2.9
+ },
+ "hit": {
+  "title": "Punch impact, heavy",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/impact-sounds",
+  "seconds": 0.6
+ },
+ "door_open": {
+  "title": "Door open",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/rpg-audio",
+  "seconds": 0.6
+ },
+ "door_close": {
+  "title": "Door close",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/rpg-audio",
+  "seconds": 0.6
+ },
+ "shield": {
+  "title": "Metal impact, heavy",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/impact-sounds",
+  "seconds": 0.6
+ },
+ "arrow_hit": {
+  "title": "Wood impact, medium",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/impact-sounds",
+  "seconds": 0.6
+ },
+ "chest_open": {
+  "title": "Creak",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/rpg-audio",
+  "seconds": 0.6
+ },
+ "chest_close": {
+  "title": "Wood impact, light",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/impact-sounds",
+  "seconds": 0.6
+ },
+ "bow": {
+  "title": "Draw knife",
+  "author": "Kenney",
+  "license": "CC0 1.0",
+  "url": "https://kenney.nl/assets/rpg-audio",
+  "seconds": 0.6
  }
 }

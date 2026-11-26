@@ -26,5 +26,13 @@
     - **Conveyor:** always carries you east.
     - **Storage:** opens the crafting panel. Chests don't hold items yet.
     - **Explosive:** lit with a fire starter or torch; goes off after 2.5 s, radius 3.
-13. **Custom blocks belong to each world.** A world saves its own list, because block numbers are stored in the terrain. Your library is added to worlds you own. In co-op the host assigns numbers and shares the list; guests' new blocks go through the host. Up to about 70 custom blocks fit per world. There's no "promote to global" without a server.
+13. **Custom blocks belong to each world.** A world saves its own list, because block numbers are stored in the terrain. Your library is added to worlds you own. In co-op the host assigns numbers and shares the list; guests' new blocks go through the host. Up to about 100 custom blocks fit per world. There's no "promote to global" without a server.
 14. **Structures sit on a 144-block grid and depend only on the seed.** About 55% of grid cells with a suitable biome get one. Old chests become normal chests once looted, so loot is taken only once, also in co-op.
+15. **New built-in blocks push custom block numbers up.** Worlds remember how many built-in blocks existed when they were saved and move player-made block numbers up when more built-ins arrive, so old worlds keep their custom blocks. About 100 custom blocks still fit per world.
+16. **Monsters follow light, not just time.** They spawn on the surface at night and in caves at any time, but never within about 7 blocks of a torch, lantern, fire, lava or glowing crystal. Zombies and skeletons burn under open sky in the day; spiders turn calm in sunlight unless you hit them.
+17. **Shields work without an extra button.** A shield in the off hand stops part of any hit from the front (55% wood, 80% iron); crouching stops all of it. This keeps phone controls simple.
+18. **The furnace takes over smelting.** Things that used to smelt instantly at a nearby furnace now go into the furnace and take a few seconds each, with fuel. Cement and floor tiles moved to the workbench because they mix several ingredients.
+19. **Crops grow on game time**, about 100 game seconds per stage (three stages), and only while their chunk is loaded on the host. Bone meal (white dye) skips a stage.
+20. **The host owns pets and saddled animals.** They're saved with the host's world. A friend's tamed pet follows that friend for the session; a friend riding a horse steers it, and the host moves it for everyone.
+21. **Giant spiders are made in code.** Patch's library had no light, animated spider; the procedural one has eight jointed legs that scuttle.
+22. **Monster voices are synthesised** (groans, rattles, hisses), because the library had no CC0 creature sounds; hits, doors, chests, shields and the bow use Kenney's CC0 sounds.

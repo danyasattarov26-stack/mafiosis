@@ -7,6 +7,7 @@ import { itemIcon } from '../render/textures';
 import { HOTBAR, SLOTS, ARMOR_SLOTS, type Stack } from '../game/inventory';
 import type { Game } from '../game/game';
 import { sound } from '../audio/audio';
+import { CHEST_SLOTS, SMELT_TIME, smeltResult, fuelOf, type Container } from '../game/containers';
 import { builtinBlueprints, myBlueprints, saveBlueprint, deleteBlueprint, type Blueprint } from '../game/blueprints';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string, root: ParentNode = document) => root.querySelector(s) as T;
@@ -18,6 +19,7 @@ export class Hud {
   onBlockMaker: () => void = () => {};
   onAdmin: () => void = () => {};
   station = 'hand';
+  container: string | null = null;          // the chest or furnace that's open (its block position)
   private cursor: Stack | null = null;      // item held on the mouse while moving stacks
   private recipeFilter = ''; private onlyMakeable = false;
   onQuit: () => void = () => {};
@@ -35,6 +37,7 @@ export class Hud {
       <div class="toasts"></div>
       <div class="sitebar" hidden></div>
       <div class="vignette"></div>
+      <div class="fade"></div>
       <div class="revive" hidden></div>
       <div class="loading"><div class="spinner"></div><p>${t('hud.loading')}</p></div>
       <div class="panel" hidden></div>
@@ -77,7 +80,8 @@ export class Hud {
     const v = $('.vignette', this.root);
     v.style.opacity = String(Math.max(g.redFlash, p.downed > 0 ? 0.8 : 0, s.health < 25 ? (25 - s.health) / 40 : 0));
     v.style.background = g.flash > 0 ? 'rgba(255,255,255,0.6)' : '';
-    g.redFlash = Math.max(0, g.redFlash - 0.03); g.flash = Math.max(0, g.flash - 0.03);
+    $('.fade', this.root).style.opacity = String(Math.min(1, g.sleepFade));
+    g.redFlash = Math.max(0, g.redFlash - 0.045); g.flash = Math.max(0, g.flash - 0.03);
     // being down
     const rv = $('.revive', this.root);
     const friend = g.downedFriendNear();
@@ -126,11 +130,29 @@ export class Hud {
   // ---------------- panels ----------------
   close() {
     if (this.cursor) { this.game.inv.add(this.cursor.k, this.cursor.n); this.cursor = null; this.renderCursor(); }
+    if (this.container) { if (this.cont()?.kind === 'chest') sound.play('chest_close', { vol: 0.6 }); this.container = null; }
     this.open = null; $('.panel', this.root).hidden = true; this.root.classList.remove('panel-open');
     this.game.paused = false;
   }
+  openContainer(key: string) {
+    this.container = key; this.station = 'hand'; this.open = 'inv'; this.game.paused = true; this.root.classList.add('panel-open');
+    $('.panel', this.root).hidden = false; this.renderInventory();
+  }
+  private cont(): Container | null { return this.container ? this.game.containers[this.container] ?? null : null; }
+  private containerHTML(slot: (s: Stack | null, id: string, extra?: string) => string) {
+    const c = this.cont()!;
+    if (c.kind === 'chest') return `<h3>${t('chest.title')}</h3><div class="grid chest">${c.slots.map((s, i) => slot(s, 'c' + i)).join('')}</div><p class="hint">${t('cont.hint')}</p>`;
+    const cook = Math.min(1, c.cook / SMELT_TIME), burn = c.burnMax ? c.burn / c.burnMax : 0;
+    const res = c.input ? smeltResult(c.input.k) : null;
+    return `<h3>${t('furnace.title')}</h3>
+      <div class="furnace">
+        <div class="fcol"><small>${t('furnace.input')}</small>${slot(c.input, 'fin')}<div class="flame"><i style="height:${Math.round(burn * 100)}%"></i></div>${slot(c.fuel, 'ffu')}<small>${t('furnace.fuel')}</small></div>
+        <div class="farrow"><i style="width:${Math.round(cook * 100)}%"></i>${res ? `<img src="${itemIcon(res.out)}" alt="">` : ''}</div>
+        <div class="fcol"><small>${t('furnace.output')}</small>${slot(c.out, 'fout', 'big')}</div>
+      </div><p class="hint">${t('furnace.hint')}</p><p class="hint">${t('cont.hint')}</p>`;
+  }
   openInventory(station = 'hand') {
-    this.station = station; this.open = 'inv'; this.game.paused = true; this.root.classList.add('panel-open');
+    this.station = station; this.container = null; this.open = 'inv'; this.game.paused = true; this.root.classList.add('panel-open');
     $('.panel', this.root).hidden = false; this.renderInventory();
   }
   private tooltip(k: string) {
@@ -145,13 +167,13 @@ export class Hud {
     const g = this.game, inv = g.inv, panel = $('.panel', this.root);
     const slot = (s: Stack | null, id: string, extra = '') => `<div class="slot ${extra}" data-slot="${id}" title="${s ? this.tooltip(s.k) : ''}">${this.stackHTML(s)}</div>`;
     const stations = g.stations; if (this.station !== 'hand') stations.add(this.station);
-    const list = RECIPES.filter(r => stations.has(r.at))
+    const list = RECIPES.filter(r => stations.has(r.at) && r.at !== 'furnace')
       .filter(r => !this.recipeFilter || nm(ITEM[r.out]).toLowerCase().includes(this.recipeFilter.toLowerCase()))
       .filter(r => !this.onlyMakeable || inv.canCraft(r));
     // group: makeable first
     list.sort((a, b) => Number(inv.canCraft(b)) - Number(inv.canCraft(a)));
     const shown = list.slice(0, 120);
-    const locked = RECIPES.filter(r => !stations.has(r.at)).map(r => r.at);
+    const locked = RECIPES.filter(r => !stations.has(r.at) && r.at !== 'furnace').map(r => r.at);
     const nextStation = [...new Set(locked)].slice(0, 4).map(s => t(('inv.station.' + s) as any)).join(', ');
     panel.innerHTML = `
       <div class="inv">
@@ -162,19 +184,19 @@ export class Hud {
           <div class="grid hot">${inv.slots.slice(0, HOTBAR).map((s, i) => slot(s, String(i), i === inv.sel ? 'sel' : '')).join('')}</div>
           <p class="hint">${t('inv.dropHint')}</p>
         </div>
-        <div class="col right">
+        ${this.cont() ? `<div class="col right">${this.containerHTML(slot)}</div>` : `<div class="col right">
           <h3>${t('inv.crafting')} · <span class="st">${[...stations].map(s => t(('inv.station.' + s) as any)).join(' · ')}</span></h3>
           <div class="rtools"><input class="rsearch" placeholder="${t('inv.search')}" value="${esc(this.recipeFilter)}"><label><input type="checkbox" class="rmake" ${this.onlyMakeable ? 'checked' : ''}> ${t('inv.canMake')}</label></div>
           <div class="recipes">${shown.map((r, i) => this.recipeHTML(r, i, inv.canCraft(r))).join('')}</div>
           ${nextStation ? `<p class="hint">${t('inv.nearStation', { s: nextStation })}</p>` : ''}
-        </div>
+        </div>`}
         <button class="close">✕</button>
       </div>`;
     $('.close', panel).onclick = () => this.close();
     panel.querySelector<HTMLElement>('[data-bm]')!.onclick = () => { this.close(); this.onBlockMaker(); };
-    const search = $<HTMLInputElement>('.rsearch', panel);
-    search.oninput = () => { this.recipeFilter = search.value; const pos = search.selectionStart; this.renderInventory(); const s2 = $<HTMLInputElement>('.rsearch', panel); s2.focus(); s2.setSelectionRange(pos, pos); };
-    $<HTMLInputElement>('.rmake', panel).onchange = e => { this.onlyMakeable = (e.target as HTMLInputElement).checked; this.renderInventory(); };
+    const search = panel.querySelector<HTMLInputElement>('.rsearch');
+    if (search) search.oninput = () => { this.recipeFilter = search.value; const pos = search.selectionStart; this.renderInventory(); const s2 = $<HTMLInputElement>('.rsearch', panel); s2.focus(); s2.setSelectionRange(pos, pos); };
+    const rmake = panel.querySelector<HTMLInputElement>('.rmake'); if (rmake) rmake.onchange = e => { this.onlyMakeable = (e.target as HTMLInputElement).checked; this.renderInventory(); };
     panel.querySelectorAll<HTMLElement>('[data-recipe]').forEach(el => el.addEventListener('click', e => {
       const r = shown[+el.dataset.recipe!]; const n = (e as MouseEvent).shiftKey ? 64 : 1;
       const made = inv.craft(r, n);
@@ -197,12 +219,50 @@ export class Hud {
     }).join('');
     return `<div class="recipe ${ok ? 'ok' : ''}" data-recipe="${i}" title="${this.tooltip(r.out)}"><img src="${itemIcon(r.out)}" alt=""><div><b>${esc(nm(ITEM[r.out]))}${r.n > 1 ? ' ×' + r.n : ''}</b><div class="ins">${ins}</div></div></div>`;
   }
-  private getSlot(id: string): Stack | null { const inv = this.game.inv; if (id === 'off') return inv.offhand; if (id[0] === 'a') return inv.armor[+id.slice(1)]; return inv.slots[+id]; }
-  private setSlot(id: string, s: Stack | null) { const inv = this.game.inv; if (id === 'off') inv.offhand = s; else if (id[0] === 'a') inv.armor[+id.slice(1)] = s; else inv.slots[+id] = s; }
-  private fits(id: string, s: Stack | null) { if (!s || id[0] !== 'a') return true; return ITEM[s.k]?.armor?.slot === ARMOR_SLOTS[+id.slice(1)]; }
+  private getSlot(id: string): Stack | null {
+    const inv = this.game.inv, c = this.cont();
+    if (id === 'off') return inv.offhand; if (id[0] === 'a') return inv.armor[+id.slice(1)];
+    if (c?.kind === 'chest' && id[0] === 'c') return c.slots[+id.slice(1)];
+    if (c?.kind === 'furnace' && id[0] === 'f') return id === 'fin' ? c.input : id === 'ffu' ? c.fuel : c.out;
+    return inv.slots[+id];
+  }
+  private setSlot(id: string, s: Stack | null) {
+    const inv = this.game.inv, c = this.cont();
+    if (id === 'off') inv.offhand = s; else if (id[0] === 'a') inv.armor[+id.slice(1)] = s;
+    else if (c?.kind === 'chest' && id[0] === 'c') c.slots[+id.slice(1)] = s;
+    else if (c?.kind === 'furnace' && id[0] === 'f') { if (id === 'fin') c.input = s; else if (id === 'ffu') c.fuel = s; else c.out = s; }
+    else inv.slots[+id] = s;
+    if ((id[0] === 'c' || id[0] === 'f') && this.container) this.game.containerChanged(this.container);
+  }
+  private fits(id: string, s: Stack | null) {
+    if (!s) return true;
+    if (id === 'fout') return false;
+    if (id === 'ffu') return fuelOf(s.k) > 0;
+    if (id[0] !== 'a') return true;
+    return ITEM[s.k]?.armor?.slot === ARMOR_SLOTS[+id.slice(1)];
+  }
+  /** shift-click between your inventory and an open chest or furnace */
+  private quickMove(id: string, cur: Stack) {
+    const inv = this.game.inv, c = this.cont()!;
+    if (id[0] === 'c' || id[0] === 'f') { this.setSlot(id, null); const left = inv.add(cur.k, cur.n); if (left) this.setSlot(id, { ...cur, n: left }); return; }
+    if (c.kind === 'furnace') {
+      const to = smeltResult(cur.k) && !(c.input && c.input.k !== cur.k) ? 'fin' : fuelOf(cur.k) > 0 && !(c.fuel && c.fuel.k !== cur.k) ? 'ffu' : null;
+      if (!to) return;
+      const there = this.getSlot(to), max = ITEM[cur.k].stack, m = Math.min(cur.n, max - (there?.n ?? 0));
+      if (m <= 0) return;
+      this.setSlot(to, { k: cur.k, n: (there?.n ?? 0) + m }); cur.n -= m; if (cur.n <= 0) this.setSlot(id, null);
+      return;
+    }
+    let left = cur.n; const max = ITEM[cur.k]?.stack ?? 64;
+    for (let i = 0; i < CHEST_SLOTS && left; i++) { const s = c.slots[i]; if (s && s.k === cur.k && !s.d && s.n < max) { const m = Math.min(left, max - s.n); s.n += m; left -= m; } }
+    for (let i = 0; i < CHEST_SLOTS && left; i++) if (!c.slots[i]) { c.slots[i] = { ...cur, n: left }; left = 0; }
+    this.setSlot(id, left ? { ...cur, n: left } : null);
+    this.game.containerChanged(this.container!);
+  }
   private clickSlot(id: string, right: boolean, shift: boolean) {
     const inv = this.game.inv;
     let cur = this.getSlot(id);
+    if (shift && cur && !this.cursor && this.cont()) { this.quickMove(id, cur); inv.onChange(); sound.play('click', { vol: 0.3 }); this.renderInventory(); return; }
     if (shift && cur && !this.cursor) {
       // quick move between hotbar/backpack, or wear armour
       const d = ITEM[cur.k];
@@ -233,6 +293,7 @@ export class Hud {
       } else { this.setSlot(id, this.cursor); this.cursor = cur; }
     }
     sound.play('click', { vol: 0.3 });
+    if (this.container && (id[0] === 'c' || id[0] === 'f')) this.game.containerChanged(this.container);
     inv.onChange(); this.renderCursor(); this.renderInventory();
   }
   private renderCursor() { const c = $('.cursor-item', this.root); c.hidden = !this.cursor; c.innerHTML = this.stackHTML(this.cursor); }

@@ -7,6 +7,8 @@ import { settings } from '../game/settings';
 
 const AMBIENT = ['birds', 'wind', 'ocean', 'night', 'rain', 'fire'] as const;
 type Amb = typeof AMBIENT[number];
+/** monster voices are made in code (no recordings) */
+const SYNTH_ONLY = new Set(['zombie', 'skeleton', 'spider', 'bandit', 'burn', 'beast']);
 
 export class Sound {
   ctx: AudioContext | null = null;
@@ -45,7 +47,7 @@ export class Sound {
       vol *= 1 - d / range;
       pan = Math.max(-1, Math.min(1, opt.pos.clone().sub(this.listener).normalize().dot(this.right)));
     }
-    const b = await this.buf(name);
+    const b = SYNTH_ONLY.has(name) ? null : await this.buf(name);
     const g = this.ctx.createGain(); g.gain.value = vol;
     const p = this.ctx.createStereoPanner(); p.pan.value = pan;
     g.connect(p).connect(this.sfx);
@@ -73,6 +75,19 @@ export class Sound {
     else if (name === 'pickup' || name === 'click') tone(700, 1200, 0.08);
     else if (name === 'discover' || name === 'craft') { tone(660, 990, 0.25, 'triangle'); }
     else if (name === 'hurt') tone(220, 110, 0.2, 'sawtooth');
+    else if (name === 'zombie' || name === 'beast') {
+      // a low, wobbling groan: two detuned saws through a vowel-ish filter
+      const base = name === 'beast' ? 55 : 85, dur = 0.9 + Math.random() * 0.5;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = name === 'beast' ? 380 : 520; f.Q.value = 3; f.connect(out);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.15); g.gain.exponentialRampToValueAtTime(0.001, t + dur); g.connect(f);
+      for (const det of [0, 7]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(base + det, t); o.frequency.linearRampToValueAtTime(base * 0.75 + det, t + dur); o.connect(g); o.start(t); o.stop(t + dur); }
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 6; lg.gain.value = 120; lfo.connect(lg).connect(f.frequency); lfo.start(t); lfo.stop(t + dur);
+    } else if (name === 'skeleton') {
+      // bones rattling: a burst of tiny woody clicks
+      for (let i = 0; i < 9; i++) { const at = t + i * 0.045 + Math.random() * 0.02, o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = 900 + Math.random() * 900; g.gain.setValueAtTime(0.18, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.03); o.connect(g).connect(out); o.start(at); o.stop(at + 0.04); }
+    } else if (name === 'spider') noise(0.45, 5200, 0.8);
+    else if (name === 'burn') noise(0.5, 1800, 0.6);
+    else if (name === 'bandit') tone(180, 140, 0.35, 'triangle');
     else noise(0.25, 600, 1);
   }
 

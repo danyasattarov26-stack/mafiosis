@@ -40,12 +40,15 @@ export class Player {
   }
   blockAt(w: World, dy = 0) { return w.get(Math.floor(this.pos.x), Math.floor(this.pos.y + dy), Math.floor(this.pos.z)); }
 
-  update(dt: number, w: World, inp: Input, sens: number, invertY: boolean) {
-    if (this.dead) return;
-    // look
+  /** turn the head (also used while riding) */
+  turn(inp: Input, sens: number, invertY: boolean) {
     this.yaw -= inp.look.x * 0.0022 * sens;
     this.pitch -= inp.look.y * 0.0022 * sens * (invertY ? -1 : 1);
     this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch));
+  }
+  update(dt: number, w: World, inp: Input, sens: number, invertY: boolean) {
+    if (this.dead) return;
+    this.turn(inp, sens, invertY);
     if (this.downed > 0) { this.vel.x = 0; this.vel.z = 0; this.physics(dt, w, 0, 0, false); return; }
     const feet = this.blockAt(w, 0.1), head = this.blockAt(w, EYE);
     this.inWater = feet === B.water || this.blockAt(w, 0.9) === B.water;
@@ -59,6 +62,8 @@ export class Player {
     if (sprinting) speed = 6.6;
     if (this.inWater) speed *= 0.55;
     if (this.stats.sick > 0.5) speed *= 0.85;
+    const webbed = feet === B.cobweb || mid === B.cobweb;
+    if (webbed) { speed *= 0.2; this.vel.y = Math.max(this.vel.y, -1.2); }
     // wish direction in world space
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
     const wx = inp.move.x * c + inp.move.z * s, wz = -inp.move.x * s + inp.move.z * c;

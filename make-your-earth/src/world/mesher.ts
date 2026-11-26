@@ -18,6 +18,7 @@ export const OPAQUE = new Uint8Array(N);   // full cube that hides faces behind 
 export const TRANSP = new Uint8Array(N);
 export const LIGHTEMIT = new Uint8Array(N);
 export const SKYBLOCK = new Uint8Array(N); // stops sunlight (0 = passes, 1 = dims, 15 = blocks)
+export const SWAY = new Uint8Array(N);     // moves in the wind: 1 leaves, 2 plants (top edge only)
 export function buildTables(extra: { render?: string; transparent?: boolean; light?: number; key?: string }[] = []) {
   [...BLOCKS, ...extra].forEach((b, i) => {
     if (i >= N) return;
@@ -26,6 +27,8 @@ export function buildTables(extra: { render?: string; transparent?: boolean; lig
     TRANSP[i] = b.transparent || i === 0 ? 1 : 0;
     OPAQUE[i] = RENDER[i] === 1 && !TRANSP[i] ? 1 : 0;
     LIGHTEMIT[i] = b.light ?? 0;
+    const key = (b as any).key as string | undefined;
+    SWAY[i] = key?.endsWith('_leaves') ? 1 : RENDER[i] === 2 && !LIGHTEMIT[i] && key !== 'ladder' && key !== 'cobweb' ? 2 : 0;
     SKYBLOCK[i] = OPAQUE[i] ? 15 : RENDER[i] === 3 ? 2 : (RENDER[i] === 1 && TRANSP[i] && !(b as any).key?.includes?.('glass')) ? 1 : 0;
   });
 }
@@ -134,15 +137,29 @@ export function meshChunk(data: Uint8Array, nb: (Uint8Array | null)[]): { solid:
           }
           const li = dir[1] < 0 || dir[1] >= CH ? 0xf0 : L[pidx(dir[0], dir[1], dir[2])];
           const tile = TILE6[a * 6 + face];
-          mask[n] = ((tile + 1) | ((li >> 4) << 12) | ((li & 15) << 16) | (RENDER[a] === 3 ? 1 << 20 : 0));
+          // ambient occlusion: darken corners tucked against other blocks (per corner, 0..3)
+          let ao = 0;
+          if (RENDER[a] === 1 && dir[1] >= 0 && dir[1] < CH) {
+            const occ = (ou: number, ov: number) => {
+              const q = [dir[0], dir[1], dir[2]];
+              q[u] += ou; q[v] += ov;
+              if (q[1] < 0 || q[1] >= CH || q[0] < -1 || q[0] > CS || q[2] < -1 || q[2] > CS) return 0;
+              return OPAQUE[P[pidx(q[0], q[1], q[2])]];
+            };
+            const cn = (su: number, sv: number) => { const a1 = occ(su, 0), a2 = occ(0, sv); return a1 && a2 ? 3 : a1 + a2 + occ(su, sv); };
+            ao = cn(-1, -1) | (cn(1, -1) << 2) | (cn(1, 1) << 4) | (cn(-1, 1) << 6);
+          }
+          const uniform = ao === 0 || ao === 0x55 || ao === 0xaa || ao === 0xff;
+          mask[n] = ((tile + 1) | ((li >> 4) << 12) | ((li & 15) << 16) | (RENDER[a] === 3 ? 1 << 20 : 0) | (ao << 21) | (uniform ? 0 : 1 << 29)) | (SWAY[a] === 1 ? 1 << 30 : 0);
         }
         // greedy: grow rectangles of equal keys
         n = 0;
         for (let jv = 0; jv < vMax; jv++) for (let iu = 0; iu < uMax;) {
           const key = mask[n + 0];
           if (!key) { iu++; n++; continue; }
-          let w = 1; while (iu + w < uMax && mask[n + w] === key) w++;
-          let h = 1, done = false;
+          const solo = (key >> 29) & 1;            // corners shaded differently: don't stretch the shading
+          let w = 1; while (!solo && iu + w < uMax && mask[n + w] === key) w++;
+          let h = 1, done = !!solo;
           while (jv + h < vMax && !done) {
             for (let k = 0; k < w; k++) if (mask[n + k + h * uMax] !== key) { done = true; break; }
             if (!done) h++;
@@ -167,7 +184,8 @@ export function meshChunk(data: Uint8Array, nb: (Uint8Array | null)[]): { solid:
         solid.pos.push(x + A[0], y, z + A[1], x + A[2], y, z + A[3], x + A[2], y + 1 - h, z + A[3], x + A[0], y + 1 - h, z + A[1]);
         solid.tex.push(0, 0, 1, 0, 1, 1, 0, 1);
         solid.tile.push(t, t, t, t);
-        for (let k = 0; k < 4; k++) solid.light.push(sky * 0.9, blk * 0.9);
+        const sw = SWAY[a] === 2 ? 1 : 0;
+        solid.light.push(sky * 0.9, blk * 0.9, 0, sky * 0.9, blk * 0.9, 0, sky * 0.9, blk * 0.9, sw, sky * 0.9, blk * 0.9, sw);
         solid.index.push(b, b + 1, b + 2, b, b + 2, b + 3); solid.n += 4;
       }
     }
@@ -177,6 +195,9 @@ export function meshChunk(data: Uint8Array, nb: (Uint8Array | null)[]): { solid:
 
 function emitQuad(buf: Buf, d: number, u: number, v: number, sgn: number, s: number, iu: number, jv: number, w: number, h: number, key: number, shade: number) {
   const tile = (key & 0xfff) - 1, sky = ((key >> 12) & 15) / 15, blk = ((key >> 16) & 15) / 15;
+  const ao = (key >> 21) & 0xff, sway = (key >> 30) & 1 ? 0.5 : 0;
+  const AO = [1, 0.8, 0.64, 0.5];
+  const aoc = [ao & 3, (ao >> 2) & 3, (ao >> 4) & 3, (ao >> 6) & 3];
   const off = sgn > 0 ? s + 1 : s;
   const c = (a: number, b: number) => { const p = [0, 0, 0]; p[d] = off; p[u] = a; p[v] = b; return p; };
   const p0 = c(iu, jv), p1 = c(iu + w, jv), p2 = c(iu + w, jv + h), p3 = c(iu, jv + h);
@@ -184,8 +205,11 @@ function emitQuad(buf: Buf, d: number, u: number, v: number, sgn: number, s: num
   // texture coordinates: side faces run v along world y so textures stand upright
   const tc = quad.map(p => d === 1 ? [p[0], p[2]] : d === 0 ? [p[2], p[1]] : [p[0], p[1]]);
   const b = buf.n;
-  for (let k = 0; k < 4; k++) { buf.pos.push(quad[k][0], quad[k][1], quad[k][2]); buf.tex.push(tc[k][0], tc[k][1]); buf.tile.push(tile); buf.light.push(sky * shade, blk * shade); }
-  // corners run along u then v, and u × v = +d, so that order faces +d
-  if (sgn > 0) buf.index.push(b, b + 1, b + 2, b, b + 2, b + 3); else buf.index.push(b, b + 2, b + 1, b, b + 3, b + 2);
+  for (let k = 0; k < 4; k++) { const f = AO[aoc[k]]; buf.pos.push(quad[k][0], quad[k][1], quad[k][2]); buf.tex.push(tc[k][0], tc[k][1]); buf.tile.push(tile); buf.light.push(sky * shade * f, blk * shade * f, sway); }
+  // corners run along u then v, and u × v = +d, so that order faces +d.
+  // Split the quad along the diagonal that keeps the shading even.
+  const flip = aoc[0] + aoc[2] > aoc[1] + aoc[3];
+  if (!flip) { if (sgn > 0) buf.index.push(b, b + 1, b + 2, b, b + 2, b + 3); else buf.index.push(b, b + 2, b + 1, b, b + 3, b + 2); }
+  else { if (sgn > 0) buf.index.push(b, b + 1, b + 3, b + 1, b + 2, b + 3); else buf.index.push(b, b + 3, b + 1, b + 1, b + 3, b + 2); }
   buf.n += 4;
 }

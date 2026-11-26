@@ -24,10 +24,10 @@ Live: https://make-your-earth.vercel.app
 | WASD | Left stick | Move |
 | Mouse | Right stick | Look |
 | Left click (hold) | RT | Hit / break |
-| Right click | LT | Use, place, eat, drink, open a station |
+| Right click | LT | Use, place, eat, drink, open a station or chest, shoot a bow, open a door, sleep, tame, saddle or ride |
 | Space | A | Jump / swim up |
 | Left Shift | Left stick press | Sprint |
-| C | B | Crouch |
+| C | B | Crouch (raises your shield; gets you off a horse) |
 | E | Y | Inventory and crafting |
 | M | Back | Map (click to add waypoints) |
 | F | X | Eat / drink what you hold |
@@ -40,6 +40,16 @@ Live: https://make-your-earth.vercel.app
 | Esc | Start | Pause / cancel a blueprint |
 
 Keys can be rebound in Settings.
+
+## Survival tips
+
+- **Monsters** come out at night and in dark caves: zombies, skeleton archers, skeleton warriors, giant spiders, cave spiders and cave beasts. Torches and lanterns stop them spawning nearby; zombies and skeletons burn at sunrise. Bandits roam by day and carry coins.
+- **Shields** go in the off-hand slot (next to your armour). They stop part of a hit from the front; crouch to block it all.
+- **Bow:** hold it and right-click; you need arrows.
+- **Farming:** a hoe turns dirt or grass into farmland; plant seeds, carrots or potatoes on it. Crops grow in three stages; white dye (bone meal) speeds them up.
+- **Pets and riding:** give a wolf a bone (it may take a few) and it becomes your dog; wild cats like raw fish. Put a saddle on a horse, camel or zebra, then right-click to ride.
+- **Beds** set where your next life starts and skip the night (if no monsters are close).
+- **Chests** store 27 stacks. **Furnaces** smelt with fuel: put ore, sand, logs or raw food on top and coal, charcoal, wood or sticks underneath.
 
 ## Develop
 

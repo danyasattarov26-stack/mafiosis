@@ -44,4 +44,16 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
 - [ ] M6 Vehicles
 - [ ] M7 Society
 - [ ] M8 Science & space
+- [x] **Survival update (caves, monsters, farming, combat):**
+  - damage feedback: red flash, screen shake, head tilt, grunt and thud on every hit;
+  - three layers of cave tunnels, huge caverns with underground lakes, lava pools, glowing crystals, mushrooms and cobwebs; ravines; tunnels that open to the surface;
+  - ores repainted as chunky, shaded minerals with a shape per ore;
+  - monsters: zombies, skeleton archers, skeleton warriors, giant and cave spiders, cave beasts and bandits; night and dark-cave spawning blocked by light; undead burn in daylight; health bars and knockback;
+  - new animals: duck, wild cat, octopus; tame wolves into dogs (they fight for you) and cats; saddle and ride horses, camels and zebras;
+  - bows and arrows, off-hand shields;
+  - farming (hoe, farmland, wheat, carrots and potatoes in three stages, bone meal), wild carrots, potatoes, pumpkins and cornflowers;
+  - chests with real storage and a furnace with fuel, input and output, shared in co-op;
+  - beds (spawn point, skip the night), two-block doors that open and close, windows, stained glass, iron bars, lanterns;
+  - about 55 new blocks and 25 new items: coloured wool, concrete, terracotta and glass, nine dyes, three new planks, polished stone, crates, barrels and new foods;
+  - graphics: corner shadows (ambient occlusion), swaying leaves and plants, sparkling water, drifting clouds; fixed texture bleed on some blocks.
 - [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

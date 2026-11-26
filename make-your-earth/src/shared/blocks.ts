@@ -8,8 +8,10 @@ export type Pattern =
   | 'noise' | 'grass' | 'grassSide' | 'log' | 'logTop' | 'planks' | 'leaves' | 'stone' | 'cobble' | 'ore'
   | 'sand' | 'brick' | 'glass' | 'water' | 'snow' | 'ice' | 'metal' | 'concrete' | 'crystal' | 'plant'
   | 'flower' | 'crop' | 'cactus' | 'cactusTop' | 'wool' | 'tiles' | 'torch' | 'door' | 'table' | 'furnace'
-  | 'lava' | 'chest' | 'clay' | 'strata';
-export interface Tex { p: Pattern; c: string[] }
+  | 'lava' | 'chest' | 'clay' | 'strata'
+  | 'shard' | 'mushroom' | 'web' | 'sprout' | 'carrots' | 'potatoes' | 'crate' | 'barrel' | 'window' | 'stained'
+  | 'doorOpen' | 'bed' | 'bedSide' | 'lantern' | 'polished' | 'pumpkin' | 'bars' | 'moss';
+export interface Tex { p: Pattern; c: string[]; s?: string }   // s: shape variant (ores: lumps, vein, gem)
 export type Tool = 'hand' | 'axe' | 'pickaxe' | 'shovel';
 export type Render = 'cube' | 'cross' | 'liquid' | 'none';
 export interface BlockDef {
@@ -23,6 +25,7 @@ export interface BlockDef {
 }
 
 const T = (p: Pattern, ...c: string[]): Tex => ({ p, c });
+const ORE = (s: string, ...c: string[]): Tex => ({ p: 'ore', c, s });
 
 export const BLOCKS: BlockDef[] = [
   { key: 'air', en: 'Air', pt: 'Ar', top: T('noise', '#000'), hard: 0, tool: 'hand', render: 'none', solid: false, transparent: true },
@@ -55,14 +58,14 @@ export const BLOCKS: BlockDef[] = [
   { key: 'dry_grass', en: 'Dry Grass', pt: 'Erva Seca', top: T('grass', '#b6a64e', '#9a8c3e'), side: T('grassSide', '#8a6640', '#b6a64e'), bottom: T('noise', '#8a6640', '#7a5836'), hard: 0.6, tool: 'shovel', drop: 'dirt' },
   { key: 'jungle_grass', en: 'Jungle Grass', pt: 'Relva Tropical', top: T('grass', '#3f9a32', '#2f8226'), side: T('grassSide', '#6a4a2e', '#3f9a32'), bottom: T('noise', '#6a4a2e', '#5a3e26'), hard: 0.6, tool: 'shovel', drop: 'dirt' },
   { key: 'mud', en: 'Mud', pt: 'Lama', top: T('noise', '#4e3a2a', '#3f2e22'), hard: 0.5, tool: 'shovel' },
-  { key: 'coal_ore', en: 'Coal Ore', pt: 'Minério de Carvão', top: T('ore', '#8a8b8f', '#1d1d1f'), hard: 2, tool: 'pickaxe', drop: 'coal' },
-  { key: 'copper_ore', en: 'Copper Ore', pt: 'Minério de Cobre', top: T('ore', '#8a8b8f', '#c8743c'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'raw_copper' },
-  { key: 'tin_ore', en: 'Tin Ore', pt: 'Minério de Estanho', top: T('ore', '#8a8b8f', '#d9dde2'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'raw_tin' },
-  { key: 'iron_ore', en: 'Iron Ore', pt: 'Minério de Ferro', top: T('ore', '#8a8b8f', '#c9a283'), hard: 2.6, tool: 'pickaxe', tier: 2, drop: 'raw_iron' },
-  { key: 'gold_ore', en: 'Gold Ore', pt: 'Minério de Ouro', top: T('ore', '#8a8b8f', '#f2c530'), hard: 2.8, tool: 'pickaxe', tier: 3, drop: 'raw_gold' },
-  { key: 'sulfur_ore', en: 'Sulfur Ore', pt: 'Minério de Enxofre', top: T('ore', '#8a8b8f', '#e2d84a'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'sulfur' },
-  { key: 'diamond_ore', en: 'Diamond Ore', pt: 'Minério de Diamante', top: T('ore', '#8a8b8f', '#6ef0e8'), hard: 3.5, tool: 'pickaxe', tier: 3, drop: 'diamond' },
-  { key: 'uranium_ore', en: 'Uranium Ore', pt: 'Minério de Urânio', top: T('ore', '#6c6d70', '#7cff4a'), hard: 4, tool: 'pickaxe', tier: 4, drop: 'raw_uranium', light: 4 },
+  { key: 'coal_ore', en: 'Coal Ore', pt: 'Minério de Carvão', top: ORE('lumps', '#8a8b8f', '#232325', '#4a4a50'), hard: 2, tool: 'pickaxe', drop: 'coal' },
+  { key: 'copper_ore', en: 'Copper Ore', pt: 'Minério de Cobre', top: ORE('vein', '#8a8b8f', '#c8743c', '#f0a46a', '#3f7a5e'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'raw_copper' },
+  { key: 'tin_ore', en: 'Tin Ore', pt: 'Minério de Estanho', top: ORE('vein', '#8a8b8f', '#b9bec6', '#f4f6f8'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'raw_tin' },
+  { key: 'iron_ore', en: 'Iron Ore', pt: 'Minério de Ferro', top: ORE('vein', '#8a8b8f', '#c9946e', '#ecc3a0'), hard: 2.6, tool: 'pickaxe', tier: 2, drop: 'raw_iron' },
+  { key: 'gold_ore', en: 'Gold Ore', pt: 'Minério de Ouro', top: ORE('nugget', '#8a8b8f', '#e8b020', '#fff07a'), hard: 2.8, tool: 'pickaxe', tier: 3, drop: 'raw_gold' },
+  { key: 'sulfur_ore', en: 'Sulfur Ore', pt: 'Minério de Enxofre', top: ORE('lumps', '#8a8b8f', '#d8cc30', '#fff58a'), hard: 2.2, tool: 'pickaxe', tier: 1, drop: 'sulfur' },
+  { key: 'diamond_ore', en: 'Diamond Ore', pt: 'Minério de Diamante', top: ORE('gem', '#8a8b8f', '#4fd8e0', '#d8fffc'), hard: 3.5, tool: 'pickaxe', tier: 3, drop: 'diamond' },
+  { key: 'uranium_ore', en: 'Uranium Ore', pt: 'Minério de Urânio', top: ORE('gem', '#6c6d70', '#5adf2a', '#dcff9a'), hard: 4, tool: 'pickaxe', tier: 4, drop: 'raw_uranium', light: 4 },
   { key: 'cobblestone', en: 'Cobblestone', pt: 'Pedra Rústica', top: T('cobble', '#8a8b8f', '#5f6064'), hard: 1.8, tool: 'pickaxe' },
   { key: 'oak_planks', en: 'Oak Planks', pt: 'Tábuas de Carvalho', top: T('planks', '#b48a52', '#94703f'), hard: 1.4, tool: 'axe', flammable: true },
   { key: 'birch_planks', en: 'Birch Planks', pt: 'Tábuas de Bétula', top: T('planks', '#d8c58d', '#bfa96f'), hard: 1.4, tool: 'axe', flammable: true },
@@ -102,7 +105,7 @@ export const BLOCKS: BlockDef[] = [
   { key: 'packed_ice', en: 'Packed Ice', pt: 'Gelo Compacto', top: T('ice', '#8cb8e0', '#6f9fd0'), hard: 1.2, tool: 'pickaxe' },
   { key: 'blast_door', en: 'Blast Door', pt: 'Porta Blindada', top: T('door', '#5f6368', '#f2c230'), hard: 12, tool: 'pickaxe', tier: 4, era: 4 },
   { key: 'air_filter', en: 'Air Filter', pt: 'Filtro de Ar', top: T('metal', '#9aa3ad', '#46b3c9'), hard: 3, tool: 'pickaxe', tier: 3, era: 4 },
-  { key: 'wooden_door', en: 'Wooden Door', pt: 'Porta de Madeira', top: T('door', '#94703f', '#5e3f22'), hard: 1.2, tool: 'axe', flammable: true, solid: false },
+  { key: 'wooden_door', en: 'Wooden Door', pt: 'Porta de Madeira', top: T('door', '#94703f', '#5e3f22'), hard: 1.2, tool: 'axe', flammable: true },
   { key: 'ladder', en: 'Ladder', pt: 'Escada de Mão', top: T('planks', '#94703f', '#5e3f22'), hard: 0.5, tool: 'axe', render: 'cross', solid: false, transparent: true, flammable: true },
   { key: 'tnt', en: 'Explosive Charge', pt: 'Carga Explosiva', top: T('tiles', '#c8302a', '#f2f2f2'), hard: 0.3, tool: 'hand', flammable: true, era: 3 },
   { key: 'fire', en: 'Fire', pt: 'Fogo', top: T('torch', '#ff5a1a', '#ffd24a'), hard: 0, tool: 'hand', drop: null, render: 'cross', solid: false, transparent: true, light: 15 },
@@ -118,7 +121,64 @@ export const BLOCKS: BlockDef[] = [
   { key: 'chiseled_sandstone', en: 'Carved Sandstone', pt: 'Arenito Esculpido', top: T('tiles', '#d8c48a', '#a8803e'), hard: 1.4, tool: 'pickaxe' },
   { key: 'hay_bale', en: 'Hay Bale', pt: 'Fardo de Feno', top: T('logTop', '#d8b84a', '#a8862a'), side: T('crop', '#d8b84a', '#b8962e'), hard: 0.5, tool: 'hand', flammable: true },
   { key: 'bookshelf', en: 'Bookshelf', pt: 'Estante', top: T('planks', '#b48a52', '#94703f'), side: T('door', '#6a3a2a', '#2f5d9a'), hard: 1.4, tool: 'axe', flammable: true },
+  // ---- v3: caves, farming, furniture, colours (append only) ----
+  { key: 'glow_crystal', en: 'Glow Crystal', pt: 'Cristal Luminoso', top: T('crystal', '#8a4fd8', '#e0c0ff'), hard: 1.2, tool: 'pickaxe', drop: 'crystal_shard', light: 12, transparent: false },
+  { key: 'crystal_cluster', en: 'Crystal Cluster', pt: 'Aglomerado de Cristais', top: T('shard', '#9a5fe8', '#f0dcff'), hard: 0.6, tool: 'pickaxe', drop: 'crystal_shard', render: 'cross', solid: false, transparent: true, light: 9 },
+  { key: 'glow_mushroom', en: 'Glow Cap', pt: 'Cogumelo Luminoso', top: T('mushroom', '#3fd8e8', '#d8fff8'), hard: 0.05, tool: 'hand', drop: 'glow_cap', render: 'cross', solid: false, transparent: true, light: 7 },
+  { key: 'red_mushroom', en: 'Red Mushroom', pt: 'Cogumelo Vermelho', top: T('mushroom', '#d8302a', '#f4eee6'), hard: 0.05, tool: 'hand', drop: 'mushroom', render: 'cross', solid: false, transparent: true },
+  { key: 'brown_mushroom', en: 'Brown Mushroom', pt: 'Cogumelo Castanho', top: T('mushroom', '#9a6a4a', '#c8a088'), hard: 0.05, tool: 'hand', drop: 'mushroom', render: 'cross', solid: false, transparent: true },
+  { key: 'moss_block', en: 'Moss', pt: 'Musgo', top: T('moss', '#4f8a32', '#3a6e24'), hard: 0.4, tool: 'shovel' },
+  { key: 'cobweb', en: 'Cobweb', pt: 'Teia', top: T('web', '#f0f0f0', '#d8d8d8'), hard: 0.6, tool: 'hand', drop: 'string', render: 'cross', solid: false, transparent: true },
+  { key: 'wheat_crop_0', en: 'Wheat (sprout)', pt: 'Trigo (rebento)', top: T('sprout', '#5fae3c', '#4a8a2e'), hard: 0, tool: 'hand', drop: 'seeds', render: 'cross', solid: false, transparent: true },
+  { key: 'wheat_crop_1', en: 'Wheat (growing)', pt: 'Trigo (a crescer)', top: T('crop', '#7aa83a', '#a8b84a'), hard: 0, tool: 'hand', drop: 'seeds', render: 'cross', solid: false, transparent: true },
+  { key: 'wheat_crop_2', en: 'Wheat (ripe)', pt: 'Trigo (maduro)', top: T('crop', '#c8a83a', '#e8d060'), hard: 0, tool: 'hand', drop: 'wheat_item', render: 'cross', solid: false, transparent: true },
+  { key: 'carrot_crop_0', en: 'Carrots (sprout)', pt: 'Cenouras (rebento)', top: T('sprout', '#5fae3c', '#3f8a2a'), hard: 0, tool: 'hand', drop: 'carrot', render: 'cross', solid: false, transparent: true },
+  { key: 'carrot_crop_1', en: 'Carrots (growing)', pt: 'Cenouras (a crescer)', top: T('carrots', '#4f9a32', '#3f7a28', '#7a5a2a'), hard: 0, tool: 'hand', drop: 'carrot', render: 'cross', solid: false, transparent: true },
+  { key: 'carrot_crop_2', en: 'Carrots (ripe)', pt: 'Cenouras (maduras)', top: T('carrots', '#4f9a32', '#3f7a28', '#f08a2a'), hard: 0, tool: 'hand', drop: 'carrot', render: 'cross', solid: false, transparent: true },
+  { key: 'potato_crop_0', en: 'Potatoes (sprout)', pt: 'Batatas (rebento)', top: T('sprout', '#6aae44', '#4a8a2e'), hard: 0, tool: 'hand', drop: 'potato', render: 'cross', solid: false, transparent: true },
+  { key: 'potato_crop_1', en: 'Potatoes (growing)', pt: 'Batatas (a crescer)', top: T('potatoes', '#5a9a3a', '#4a7a2e', '#8a7a4a'), hard: 0, tool: 'hand', drop: 'potato', render: 'cross', solid: false, transparent: true },
+  { key: 'potato_crop_2', en: 'Potatoes (ripe)', pt: 'Batatas (maduras)', top: T('potatoes', '#5a9a3a', '#4a7a2e', '#d8b46a'), hard: 0, tool: 'hand', drop: 'potato', render: 'cross', solid: false, transparent: true },
+  { key: 'crate', en: 'Wooden Crate', pt: 'Caixote', top: T('crate', '#b48a52', '#6b4a2b'), hard: 1.2, tool: 'axe', flammable: true },
+  { key: 'barrel', en: 'Barrel', pt: 'Barril', top: T('logTop', '#94703f', '#4a3a2a'), side: T('barrel', '#94703f', '#3a3a3e'), hard: 1.2, tool: 'axe', flammable: true },
+  { key: 'window', en: 'Window', pt: 'Janela', top: T('window', '#d8eef8', '#7a5530'), hard: 0.5, tool: 'hand', transparent: true },
+  { key: 'glass_red', en: 'Red Stained Glass', pt: 'Vitral Vermelho', top: T('stained', '#d83a3a', '#8a1a1a'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'glass_orange', en: 'Orange Stained Glass', pt: 'Vitral Laranja', top: T('stained', '#f08a2a', '#9a4a10'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'glass_yellow', en: 'Yellow Stained Glass', pt: 'Vitral Amarelo', top: T('stained', '#f2d23a', '#9a7a10'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'glass_green', en: 'Green Stained Glass', pt: 'Vitral Verde', top: T('stained', '#5ab83a', '#2a6a1a'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'glass_blue', en: 'Blue Stained Glass', pt: 'Vitral Azul', top: T('stained', '#3a6ad8', '#1a2a8a'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'glass_purple', en: 'Purple Stained Glass', pt: 'Vitral Roxo', top: T('stained', '#9a4ad8', '#4a1a7a'), hard: 0.4, tool: 'hand', drop: null, transparent: true },
+  { key: 'wooden_door_open', en: 'Open Door', pt: 'Porta Aberta', top: T('doorOpen', '#94703f', '#5e3f22'), hard: 1.2, tool: 'axe', drop: 'wooden_door', render: 'cube', solid: false, transparent: true, flammable: true },
+  { key: 'bed', en: 'Bed', pt: 'Cama', top: T('bed', '#c8302a', '#f2eee6'), side: T('bedSide', '#c8302a', '#7a5530'), bottom: T('planks', '#94703f', '#744f2c'), hard: 0.8, tool: 'axe', flammable: true },
+  { key: 'lantern', en: 'Lantern', pt: 'Lanterna', top: T('lantern', '#3a3a40', '#ffd47a'), hard: 0.5, tool: 'pickaxe', render: 'cross', solid: false, transparent: true, light: 15 },
+  { key: 'wool_red', en: 'Red Wool', pt: 'Lã Vermelha', top: T('wool', '#c8302a', '#a82420'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_orange', en: 'Orange Wool', pt: 'Lã Laranja', top: T('wool', '#f08a2a', '#d0701e'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_yellow', en: 'Yellow Wool', pt: 'Lã Amarela', top: T('wool', '#f2d23a', '#d8b42a'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_green', en: 'Green Wool', pt: 'Lã Verde', top: T('wool', '#5ab83a', '#46982e'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_blue', en: 'Blue Wool', pt: 'Lã Azul', top: T('wool', '#3a5ac8', '#2e48a8'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_purple', en: 'Purple Wool', pt: 'Lã Roxa', top: T('wool', '#8a3ac8', '#702ea8'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_pink', en: 'Pink Wool', pt: 'Lã Cor-de-rosa', top: T('wool', '#f09ab8', '#d880a0'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'wool_black', en: 'Black Wool', pt: 'Lã Preta', top: T('wool', '#2a2a2e', '#1e1e22'), hard: 0.6, tool: 'hand', flammable: true },
+  { key: 'concrete_white', en: 'White Concrete', pt: 'Betão Branco', top: T('concrete', '#e8eaec', '#d8dadc'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'concrete_red', en: 'Red Concrete', pt: 'Betão Vermelho', top: T('concrete', '#a82a24', '#94221e'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'concrete_yellow', en: 'Yellow Concrete', pt: 'Betão Amarelo', top: T('concrete', '#e8b81e', '#d0a418'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'concrete_green', en: 'Green Concrete', pt: 'Betão Verde', top: T('concrete', '#4a7a24', '#3e6a1e'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'concrete_blue', en: 'Blue Concrete', pt: 'Betão Azul', top: T('concrete', '#2a3a8a', '#22307a'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'concrete_black', en: 'Black Concrete', pt: 'Betão Preto', top: T('concrete', '#1e1f22', '#16171a'), hard: 3, tool: 'pickaxe', tier: 2, era: 3 },
+  { key: 'terracotta', en: 'Terracotta', pt: 'Terracota', top: T('clay', '#b86a48', '#a85e3e'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'terracotta_white', en: 'White Terracotta', pt: 'Terracota Branca', top: T('clay', '#d8c8b8', '#c8b8a8'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'terracotta_red', en: 'Red Terracotta', pt: 'Terracota Vermelha', top: T('clay', '#9a3a2a', '#8a3024'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'terracotta_blue', en: 'Blue Terracotta', pt: 'Terracota Azul', top: T('clay', '#4a5a7a', '#3e4e6a'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'jungle_planks', en: 'Jungle Planks', pt: 'Tábuas Tropicais', top: T('planks', '#a87a4a', '#8a623a'), hard: 1.4, tool: 'axe', flammable: true },
+  { key: 'acacia_planks', en: 'Acacia Planks', pt: 'Tábuas de Acácia', top: T('planks', '#c0703e', '#a05a30'), hard: 1.4, tool: 'axe', flammable: true },
+  { key: 'palm_planks', en: 'Palm Planks', pt: 'Tábuas de Palmeira', top: T('planks', '#d8b878', '#c0a060'), hard: 1.4, tool: 'axe', flammable: true },
+  { key: 'smooth_stone', en: 'Smooth Stone', pt: 'Pedra Polida', top: T('polished', '#a0a1a5', '#88898d'), hard: 2, tool: 'pickaxe' },
+  { key: 'polished_granite', en: 'Polished Granite', pt: 'Granito Polido', top: T('polished', '#b07e6e', '#946454'), hard: 2, tool: 'pickaxe' },
+  { key: 'polished_marble', en: 'Polished Marble', pt: 'Mármore Polido', top: T('polished', '#f2f0ec', '#d8d4cc'), hard: 2, tool: 'pickaxe' },
+  { key: 'pumpkin', en: 'Pumpkin', pt: 'Abóbora', top: T('logTop', '#e8862a', '#5a7a2a'), side: T('pumpkin', '#e8862a', '#c86a1e'), hard: 0.8, tool: 'axe' },
+  { key: 'iron_bars', en: 'Iron Bars', pt: 'Grades de Ferro', top: T('bars', '#5a5e64', '#8a9098'), hard: 3, tool: 'pickaxe', tier: 1, transparent: true },
+  { key: 'flower_blue', en: 'Cornflower', pt: 'Centáurea', top: T('flower', '#4a8030', '#4a6ae8'), hard: 0.05, tool: 'hand', drop: 'blue_petals', render: 'cross', solid: false, transparent: true },
 ];
+
 
 export const BLOCK_ID: Record<string, number> = Object.fromEntries(BLOCKS.map((b, i) => [b.key, i]));
 export const B = BLOCK_ID;

@@ -154,7 +154,7 @@ export class Menu {
     const { models, sounds } = this.credits;
     body.innerHTML = `<div class="card credits"><p>${t('credits.code')} ${t('credits.thanks')}</p>
       <h3>${t('credits.models')}</h3><ul>${models.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
-      <h3>${t('credits.sounds')}</h3><ul>${sounds.map((s: any) => `<li>“${esc(s.title)}” by ${esc(s.author)} — ${esc(s.license)} — <a href="${esc(s.url)}" target="_blank" rel="noopener">freesound.org</a></li>`).join('')}</ul></div>`;
+      <h3>${t('credits.sounds')}</h3><ul>${sounds.map((s: any) => `<li>“${esc(s.title)}” by ${esc(s.author)} — ${esc(s.license)} — <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(new URL(s.url).hostname.replace('www.', ''))}</a></li>`).join('')}</ul></div>`;
   }
 }
 declare const __BUILD__: string;

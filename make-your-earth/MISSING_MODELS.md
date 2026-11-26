@@ -11,5 +11,9 @@ Searched Patch's library first (it has animated, CC BY 4.0 Polyfork animals and 
 | Animal death animations (all species) | Tip-over in code | "deer death animation", models with a Death clip |
 | Snake, monkey/ape, tiger/jaguar (jungle variety) | Not in game | "snake rigged low poly", "monkey animated", "jaguar animated" |
 | Seal, walrus, reindeer, yak (tundra variety) | Not in game | "seal", "reindeer", "yak" |
+| Giant spider, cave spider | Built in code (boxes and spheres, animated legs) | "spider rigged low poly animated" |
+| Zombie idle pose (its own idle holds the arms straight out) | The walk clip slowed right down | "zombie idle animation" |
+| Monster voices (zombie, skeleton, spider, cave beast) | Synthesised in code | "zombie groan", "bone rattle", "spider hiss" (CC0) |
+| Dog | Wolf model, light tint | "dog rigged animated" |
 | First-person hands/arms | Simple box arm | "first person arms rigged" |
 | Bronze/iron/steel tool variants | Kenney tool tinted per material | "bronze axe", "iron pickaxe" |

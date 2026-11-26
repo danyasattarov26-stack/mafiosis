@@ -41,10 +41,10 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     s.box(0, 0, 0, 6, 0, 6, B.oak_planks);
     s.box(0, 1, 0, 6, 3, 6, B.oak_planks, true);
     for (const [x, z] of [[0, 0], [6, 0], [0, 6], [6, 6]]) s.box(x, 1, z, x, 3, z, B.oak_log);
-    s.set(3, 1, 0, B.wooden_door); s.set(3, 2, 0, 0);
-    s.set(0, 2, 3, B.glass); s.set(6, 2, 3, B.glass); s.set(3, 2, 6, B.glass);
+    s.set(3, 1, 0, B.wooden_door); s.set(3, 2, 0, B.wooden_door);
+    s.set(0, 2, 3, B.window); s.set(6, 2, 3, B.window); s.set(3, 2, 6, B.window);
     roof(s, 4, 7, 7, r() < 0.5 ? B.thatch : B.pine_planks);
-    s.set(1, 1, 5, B.workbench); s.set(5, 1, 5, B.loot_chest); s.set(5, 1, 1, B.wool); s.set(1, 2, 1, B.torch); s.set(1, 1, 1, B.bookshelf);
+    s.set(1, 1, 5, B.workbench); s.set(5, 1, 5, B.loot_chest); s.set(5, 1, 1, B.bed); s.set(1, 2, 1, B.torch); s.set(1, 1, 1, B.bookshelf);
     return s.done();
   },
   house: r => {
@@ -53,10 +53,10 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     s.box(0, 0, 0, w - 1, 0, d - 1, B.cobblestone);
     s.box(0, 1, 0, w - 1, 3, d - 1, r() < 0.5 ? B.oak_planks : B.birch_planks, true);
     for (const [x, z] of [[0, 0], [w - 1, 0], [0, d - 1], [w - 1, d - 1]]) s.box(x, 1, z, x, 3, z, B.oak_log);
-    const door = Math.floor(w / 2); s.set(door, 1, 0, B.wooden_door); s.set(door, 2, 0, 0);
-    s.set(0, 2, Math.floor(d / 2), B.glass); s.set(w - 1, 2, Math.floor(d / 2), B.glass);
+    const door = Math.floor(w / 2); s.set(door, 1, 0, B.wooden_door); s.set(door, 2, 0, B.wooden_door);
+    s.set(0, 2, Math.floor(d / 2), B.window); s.set(w - 1, 2, Math.floor(d / 2), B.window);
     roof(s, 4, w, d, B.thatch);
-    s.set(1, 1, d - 2, B.wool); s.set(w - 2, 1, d - 2, r() < 0.6 ? B.loot_chest : B.hay_bale); s.set(1, 2, 1, B.torch);
+    s.set(1, 1, d - 2, B.bed); s.set(w - 2, 1, d - 2, r() < 0.6 ? B.loot_chest : B.hay_bale); s.set(1, 2, 1, B.torch);
     return s.done();
   },
   smithy: () => {
@@ -90,10 +90,10 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     s.box(0, 0, 0, 4, 0, 4, B.stone_bricks);
     s.set(2, 1, 0, 0); s.set(2, 2, 0, 0);
     for (let y = 1; y <= 10; y++) s.set(2, y, 3, B.ladder);
-    for (const y of [4, 7]) { s.set(0, y, 2, B.glass); s.set(4, y, 2, B.glass); }
+    for (const y of [4, 7]) { s.set(0, y, 2, B.iron_bars); s.set(4, y, 2, B.iron_bars); }
     s.box(-1, 11, -1, 5, 11, 5, B.stone_bricks); s.set(2, 11, 3, 0);
     for (const [x, z] of [[-1, -1], [5, -1], [-1, 5], [5, 5], [2, -1], [2, 5], [-1, 2], [5, 2]]) s.set(x, 12, z, B.stone_bricks);
-    s.set(1, 12, 1, B.torch); s.set(3, 12, 1, B.loot_chest);
+    s.set(1, 12, 1, B.lantern); s.set(3, 12, 1, B.loot_chest);
     return s.done();
   },
   pyramid: () => {

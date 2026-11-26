@@ -12,31 +12,47 @@ export interface Chunk { cx: number; cz: number; data: Uint8Array; solid: THREE.
 export interface Hit { x: number; y: number; z: number; nx: number; ny: number; nz: number; id: number; dist: number }
 
 const VERT = `
-attribute vec2 tex; attribute float tile; attribute vec2 light;
-varying vec2 vTex; varying float vTile; varying vec2 vLight; varying float vFog;
-uniform float uTime; uniform float uWave;
+attribute vec2 tex; attribute float tile; attribute vec3 light;
+varying vec2 vTex; varying float vTile; varying vec2 vLight; varying float vFog; varying vec3 vWorld;
+uniform float uTime; uniform float uWave; uniform float uWind;
 void main() {
-  vTex = tex; vTile = tile; vLight = light;
+  vTex = tex; vTile = tile; vLight = light.xy;
   vec3 p = position;
-  p.y += uWave * (sin(p.x * 0.9 + uTime * 1.6) + cos(p.z * 0.8 + uTime * 1.3)) * 0.04 - uWave * 0.12;
+  vec3 w = (modelMatrix * vec4(p, 1.0)).xyz;
+  p.y += uWave * (sin(w.x * 0.9 + uTime * 1.6) + cos(w.z * 0.8 + uTime * 1.3)) * 0.04 - uWave * 0.12;
+  // leaves and plants move in the wind (leaves gently, plants at the top)
+  float s = light.z * uWind;
+  p.x += s * (sin(uTime * 1.9 + w.x * 0.7 + w.z * 0.3) * 0.07 + sin(uTime * 4.3 + w.z) * 0.02);
+  p.z += s * cos(uTime * 1.5 + w.z * 0.6 + w.x * 0.2) * 0.05;
+  vWorld = w;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   vFog = -mv.z;
   gl_Position = projectionMatrix * mv;
 }`;
 const FRAG = `
 uniform sampler2D atlas; uniform float uSun; uniform vec3 uSunColor; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform float uAlpha; uniform float uTime; uniform float uWave;
-varying vec2 vTex; varying float vTile; varying vec2 vLight; varying float vFog;
+varying vec2 vTex; varying float vTile; varying vec2 vLight; varying float vFog; varying vec3 vWorld;
 void main() {
-  float col = mod(vTile, 16.0), row = floor(vTile / 16.0);
-  vec2 f = fract(vTex + uWave * vec2(uTime * 0.03, uTime * 0.02));
-  vec2 uv = vec2((col + f.x) / 16.0, (row + 1.0 - f.y) / 32.0);
+  float tl = floor(vTile + 0.5);                 // interpolation can give 287.9999 for tile 288: round first
+  float col = mod(tl, 16.0), row = floor(tl / 16.0);
+  vec2 f = clamp(fract(vTex + uWave * vec2(uTime * 0.03, uTime * 0.02)), 0.02, 0.98);   // stay inside the tile (no bleeding from neighbours)
+  vec2 uv = vec2((col + f.x) / 16.0, (row + 1.0 - f.y) / 64.0);
   vec4 c = texture2D(atlas, uv);
   if (c.a < 0.45) discard;
   float sky = vLight.x * uSun, blk = vLight.y;
   vec3 L = max(uSunColor * pow(sky, 1.6), vec3(1.0, 0.78, 0.5) * pow(blk, 1.4)) + 0.035;
   vec3 rgb = c.rgb * L;
+  float a = uAlpha;
+  if (uWave > 0.5) {
+    // water: deeper colour further away, little glints of sun dancing on top
+    float ripple = sin(vWorld.x * 1.7 + uTime * 2.1) * sin(vWorld.z * 1.3 - uTime * 1.7) + sin((vWorld.x + vWorld.z) * 0.9 + uTime * 1.2) * 0.5;
+    float glint = pow(clamp(ripple * 0.7, 0.0, 1.0), 10.0) * sky;
+    rgb = mix(rgb, rgb * vec3(0.55, 0.75, 1.0), smoothstep(4.0, 60.0, vFog) * 0.6);
+    rgb += uSunColor * glint * 0.3 + vec3(0.02, 0.04, 0.06) * ripple * sky;
+    a = mix(uAlpha, 0.92, smoothstep(3.0, 45.0, vFog));
+  }
   float fog = smoothstep(uFogNear, uFogFar, vFog);
-  gl_FragColor = vec4(mix(rgb, uFogColor, fog), uAlpha);
+  gl_FragColor = vec4(mix(rgb, uFogColor, fog), a);
   #include <colorspace_fragment>
 }`;
 
@@ -58,7 +74,7 @@ export class World {
     this.gen = new TerrainGen(seed);
     this.uniforms = {
       atlas: { value: atlas }, uSun: { value: 1 }, uSunColor: { value: new THREE.Color(1, 1, 1) }, uFogColor: { value: new THREE.Color('#b8d4ea') },
-      uFogNear: { value: 40 }, uFogFar: { value: 90 }, uTime: { value: 0 },
+      uFogNear: { value: 40 }, uFogFar: { value: 90 }, uTime: { value: 0 }, uWind: { value: 1 },
     };
     this.solidMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: { ...this.uniforms, uAlpha: { value: 1 }, uWave: { value: 0 } } });
     this.waterMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: { ...this.uniforms, uAlpha: { value: 0.72 }, uWave: { value: 1 } }, transparent: true, depthWrite: false });
@@ -177,7 +193,7 @@ export class World {
     g.setAttribute('position', new THREE.BufferAttribute(d.pos, 3));
     g.setAttribute('tex', new THREE.BufferAttribute(d.tex, 2));
     g.setAttribute('tile', new THREE.BufferAttribute(d.tile, 1));
-    g.setAttribute('light', new THREE.BufferAttribute(d.light, 2));
+    g.setAttribute('light', new THREE.BufferAttribute(d.light, 3));
     g.setIndex(new THREE.BufferAttribute(d.index, 1));
     g.boundingBox = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CS, CH, CS));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(CS / 2, 80, CS / 2), 140);

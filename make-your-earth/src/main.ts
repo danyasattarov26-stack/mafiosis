@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { t, onLang } from './i18n/i18n';
 import { settings, saveSettings, onSettings, detectPreset } from './game/settings';
 import { Globe } from './render/globe';
-import { buildAtlas, setIconAtlas } from './render/textures';
+import { buildAtlas, setIconAtlas, itemIcon } from './render/textures';
 import { Input } from './game/input';
 import { Game, randomName, type SaveData } from './game/game';
 import { Hud } from './ui/hud';
@@ -15,7 +15,7 @@ import { sound } from './audio/audio';
 import { Session } from './net/session';
 import { inbox, newCode, profile, type Invite } from './net/coop';
 import { MAX_PLAYERS } from './net/coop';
-import { RECIPES } from './shared/items';
+import { RECIPES, ITEM } from './shared/items';
 import { BLOCK_ID } from './shared/blocks';
 
 declare const __BUILD__: string;
@@ -98,6 +98,8 @@ function startGame(save: SaveData, code?: string, newGuest = false) {
   makeHud();
   let pending = 0;
   game.onChange = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; hud?.refresh(); }); };
+  game.onOpenContainer = k => { input.exitLock(); hud!.openContainer(k); };
+  game.onContainer = k => { if (hud?.open === 'inv' && hud.container === k) { if (!game!.containers[k]) { hud.close(); input.requestLock(); } else hud.renderInventory(); } };
   game.onOpenStation = s => { input.exitLock(); if (s === 'blueprint') hud!.openBlueprints(); else hud!.openInventory(s === 'chest' ? 'hand' : s); };
   game.onDeath = grave => {
     const name = game!.rebirth();
@@ -157,7 +159,7 @@ function hideLoading() { const el = $('#joining'); if (el) el.hidden = true; }
 
 // ---------- the loop ----------
 let last = performance.now(), fpsT = 0, frames = 0;
-(window as any).__mye = { get game() { return game; }, get session() { return session; }, renderer, play, quit, settings, fps: 0, recipes: RECIPES, blocks: BLOCK_ID };
+(window as any).__mye = { get game() { return game; }, get session() { return session; }, renderer, play, quit, settings, fps: 0, recipes: RECIPES, items: ITEM, blocks: BLOCK_ID, icon: (k: string) => itemIcon(k) };
 renderer.setAnimationLoop(now => {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   frames++; fpsT += dt; if (fpsT >= 1) { (window as any).__mye.fps = frames / fpsT; frames = 0; fpsT = 0; }
