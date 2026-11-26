@@ -4,6 +4,11 @@ import { Room, MAX_PLAYERS, clean, type Msg } from './coop';
 import type { Game, Grave, SaveData } from '../game/game';
 import { settings } from '../game/settings';
 
+/** a custom block from someone else: six faces of 16×16 pixels and a sane recipe */
+function validBlock(c: any) {
+  return c && typeof c.key === 'string' && /^cb_[a-z0-9]{4,12}$/.test(c.key) && typeof c.name === 'string' && Array.isArray(c.faces) && c.faces.length === 6
+    && c.faces.every((f: any) => typeof f === 'string' && f.length < 1500) && c.recipe && typeof c.recipe === 'object' && Object.keys(c.recipe).length <= 3;
+}
 export interface ChatLine { from: string; text: string; ch: string; at: number }
 export class Session {
   room: Room; host: boolean; game: Game | null = null;
@@ -12,6 +17,8 @@ export class Session {
   onChat: () => void = () => {};
   onToast: (s: string, kind?: string) => void = () => {};
   onFull: () => void = () => {};
+  onKicked: (banned: boolean) => void = () => {};
+  onInventory: (name: string, items: { k: string; n: number }[]) => void = () => {};
   private animT = 0; private timeT = 0; private hostPeer: string | null = null;
   welcome: Promise<{ save: SaveData; spawn: [number, number, number] } | null> | null = null;
   private reviveT = 0;
@@ -45,6 +52,8 @@ export class Session {
     game.net.grave = (g, removeId) => this.room.send({ k: 'grave', g, remove: removeId });
     game.netAttack = (id, dmg) => this.room.send({ k: 'attack', id, dmg, x: game.player.pos.x, y: game.player.pos.y, z: game.player.pos.z }, this.hostPeer ?? undefined);
     game.giveTo = (peer, items) => this.room.send({ k: 'give', items }, peer);
+    game.net.blockdef = c => this.room.send({ k: 'blockdef', c }, this.hostPeer ?? undefined);
+    game.net.blockdefs = list => this.room.send({ k: 'blockdefs', list });
     this.room.onJoin = peer => {
       if (this.host) return;   // hosts wait for hello
       this.room.send({ k: 'state', ...game.myState() }, peer);
@@ -58,6 +67,7 @@ export class Session {
       case 'hello': {
         if (!this.host) return;
         if (this.players() >= MAX_PLAYERS) { this.room.send({ k: 'full' }, from); return; }
+        if ((g.data.admin?.banned ?? []).includes(String(m.name))) { this.room.send({ k: 'kick', ban: true }, from); return; }
         g.save();
         const p = g.player.pos, a = Math.random() * Math.PI * 2;
         this.room.send({ k: 'welcome', name: g.player.name, save: { ...g.data, player: null }, spawn: [p.x + Math.cos(a) * 2, p.y + 0.5, p.z + Math.sin(a) * 2] }, from);
@@ -79,7 +89,14 @@ export class Session {
         if (b) g.hitAnimal(b, Math.min(20, +m.dmg || 1), g.player.pos.clone().set(+m.x, +m.y, +m.z), from);
         break;
       }
-      case 'give': for (const [k, n] of m.items ?? []) g.give(String(k), Math.min(64, n | 0)); break;
+      case 'give': if (!this.host && from !== this.hostPeer) break;   // only the host hands out items
+        for (const [k, n] of m.items ?? []) g.give(String(k), Math.min(576, n | 0)); break;
+      case 'tp': if (!this.host && from === this.hostPeer) { g.player.pos.set(+m.x, +m.y, +m.z); g.player.vel.set(0, 0, 0); } break;
+      case 'invreq': if (!this.host && from === this.hostPeer) this.room.send({ k: 'inv', items: g.inv.all().map(x => ({ k: x.k, n: x.n })) }, from); break;
+      case 'inv': if (this.host) this.onInventory(this.names.get(from) ?? '?', (m.items ?? []).slice(0, 60)); break;
+      case 'kick': if (!this.host && from === this.hostPeer) this.onKicked(!!m.ban); break;
+      case 'blockdef': if (this.host && validBlock(m.c)) g.addCustomBlock(m.c); break;
+      case 'blockdefs': if (!this.host && from === this.hostPeer && Array.isArray(m.list)) g.applyCustomList(m.list.filter(validBlock)); break;
       case 'grave': {
         if (m.remove) { g.graves = g.graves.filter(q => q.id !== m.remove); }
         else if (m.g && !g.graves.some(q => q.id === m.g.id)) g.graves.push(m.g as Grave);
@@ -114,5 +131,7 @@ export class Session {
     if (f && reviveHeld) { this.reviveT += dt; if (this.reviveT > 3) { this.room.send({ k: 'revive', target: 'me' }, f.id); this.reviveT = 0; } }
     else this.reviveT = 0;
   }
+  syncTime() { const g = this.game; if (g && this.host) this.room.send({ k: 'time', time: g.time, weather: g.weather }); }
+  private isHostPeer(p: string) { return p === this.hostPeer; }
   close() { this.room.close(); }
 }

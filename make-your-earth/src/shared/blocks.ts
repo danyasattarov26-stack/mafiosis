@@ -102,7 +102,7 @@ export const BLOCKS: BlockDef[] = [
   { key: 'packed_ice', en: 'Packed Ice', pt: 'Gelo Compacto', top: T('ice', '#8cb8e0', '#6f9fd0'), hard: 1.2, tool: 'pickaxe' },
   { key: 'blast_door', en: 'Blast Door', pt: 'Porta Blindada', top: T('door', '#5f6368', '#f2c230'), hard: 12, tool: 'pickaxe', tier: 4, era: 4 },
   { key: 'air_filter', en: 'Air Filter', pt: 'Filtro de Ar', top: T('metal', '#9aa3ad', '#46b3c9'), hard: 3, tool: 'pickaxe', tier: 3, era: 4 },
-  { key: 'wooden_door', en: 'Wooden Door', pt: 'Porta de Madeira', top: T('door', '#94703f', '#5e3f22'), hard: 1.2, tool: 'axe', flammable: true },
+  { key: 'wooden_door', en: 'Wooden Door', pt: 'Porta de Madeira', top: T('door', '#94703f', '#5e3f22'), hard: 1.2, tool: 'axe', flammable: true, solid: false },
   { key: 'ladder', en: 'Ladder', pt: 'Escada de Mão', top: T('planks', '#94703f', '#5e3f22'), hard: 0.5, tool: 'axe', render: 'cross', solid: false, transparent: true, flammable: true },
   { key: 'tnt', en: 'Explosive Charge', pt: 'Carga Explosiva', top: T('tiles', '#c8302a', '#f2f2f2'), hard: 0.3, tool: 'hand', flammable: true, era: 3 },
   { key: 'fire', en: 'Fire', pt: 'Fogo', top: T('torch', '#ff5a1a', '#ffd24a'), hard: 0, tool: 'hand', drop: null, render: 'cross', solid: false, transparent: true, light: 15 },
@@ -110,6 +110,14 @@ export const BLOCKS: BlockDef[] = [
   { key: 'mammoth_bones', en: 'Ancient Bones', pt: 'Ossos Antigos', top: T('strata', '#e8e2d0', '#cfc6ae'), hard: 1.5, tool: 'pickaxe', drop: 'bone' },
   { key: 'salt_rock', en: 'Salt Rock', pt: 'Rocha de Sal', top: T('crystal', '#f0e6ea', '#d8c8d0'), hard: 1.5, tool: 'pickaxe', drop: 'salt' },
   { key: 'grave', en: 'Grave Chest', pt: 'Baú Sepulcral', top: T('chest', '#4a4b50', '#9aa3ad'), hard: -1, tool: 'hand', drop: null },
+  // ---- added later: keep appending, never reorder (saved worlds store these numbers) ----
+  { key: 'loot_chest', en: 'Old Chest', pt: 'Baú Antigo', top: T('chest', '#7a5530', '#3e2814'), hard: 1.5, tool: 'axe', drop: 'chest', flammable: true },
+  { key: 'snow_bricks', en: 'Snow Bricks', pt: 'Tijolos de Neve', top: T('brick', '#f2f6fa', '#cfdbe6'), hard: 0.6, tool: 'shovel', drop: 'snowball' },
+  { key: 'mossy_bricks', en: 'Mossy Stone Bricks', pt: 'Tijolos com Musgo', top: T('brick', '#7f8a6e', '#4f6a3a'), hard: 2, tool: 'pickaxe' },
+  { key: 'cracked_bricks', en: 'Cracked Stone Bricks', pt: 'Tijolos Rachados', top: T('cobble', '#8e8f93', '#5f6064'), hard: 1.8, tool: 'pickaxe' },
+  { key: 'chiseled_sandstone', en: 'Carved Sandstone', pt: 'Arenito Esculpido', top: T('tiles', '#d8c48a', '#a8803e'), hard: 1.4, tool: 'pickaxe' },
+  { key: 'hay_bale', en: 'Hay Bale', pt: 'Fardo de Feno', top: T('logTop', '#d8b84a', '#a8862a'), side: T('crop', '#d8b84a', '#b8962e'), hard: 0.5, tool: 'hand', flammable: true },
+  { key: 'bookshelf', en: 'Bookshelf', pt: 'Estante', top: T('planks', '#b48a52', '#94703f'), side: T('door', '#6a3a2a', '#2f5d9a'), hard: 1.4, tool: 'axe', flammable: true },
 ];
 
 export const BLOCK_ID: Record<string, number> = Object.fromEntries(BLOCKS.map((b, i) => [b.key, i]));

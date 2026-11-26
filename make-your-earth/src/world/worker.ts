@@ -18,7 +18,7 @@ type Msg =
   | { t: 'mesh'; cx: number; cz: number; seq: number }
   | { t: 'set'; x: number; y: number; z: number; id: number }
   | { t: 'drop'; cx: number; cz: number }
-  | { t: 'tables'; extra: any[]; tiles: [number, number, number][] };
+  | { t: 'tables'; extra: any[]; tiles: number[][] };
 
 self.onmessage = (e: MessageEvent<Msg>) => {
   const m = e.data;

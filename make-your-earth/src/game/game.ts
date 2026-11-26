@@ -18,7 +18,10 @@ import { settings } from './settings';
 import { sound } from '../audio/audio';
 import { t, nm } from '../i18n/i18n';
 import { itemIcon, type Atlas } from '../render/textures';
-import { BLOCK_TILES } from '../world/tiles';
+import { lootFor } from '../world/loot';
+import { resetCustom, registerCustom, library, facePixels, tiles6, EXTRA, customIds, type CustomBlock } from '../shared/custom';
+import { forgetIcon } from '../render/textures';
+import { Ghost, place, capture, needs, type Blueprint } from './blueprints';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export const DAY = 1200;                // seconds per in-game day
@@ -29,7 +32,7 @@ export const randomName = (r = Math.random) => `${FIRST[Math.floor(r() * FIRST.l
 
 export interface Grave { id: string; x: number; y: number; z: number; owner: string; name: string; items: Stack[]; at: number }
 export interface Remote { id: string; name: string; look: number; obj: THREE.Group; mixer: THREE.AnimationMixer | null; actions: Record<string, THREE.AnimationAction>; cur: string; pos: THREE.Vector3; yaw: number; anim: string; downed: boolean; label: THREE.Sprite; seen: number }
-export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[] }
+export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; blueprints?: any[]; admin?: { banned: string[] } }
 
 export class Game {
   scene = new THREE.Scene();
@@ -48,7 +51,7 @@ export class Game {
   ready = false; paused = false; profileId: string; look = 0;
   toast: (msg: string, kind?: string) => void = () => {};
   onChange: () => void = () => {};        // inventory/stats changed: refresh UI
-  net: { block?: (x: number, y: number, z: number, id: number) => void; grave?: (g: Grave | null, removeId?: string) => void } = {};
+  net: { block?: (x: number, y: number, z: number, id: number) => void; grave?: (g: Grave | null, removeId?: string) => void; blockdef?: (c: CustomBlock) => void; blockdefs?: (l: CustomBlock[]) => void } = {};
   isGuest = false;
   private highlight: THREE.LineSegments; private crack: THREE.Mesh;
   private held = new THREE.Group(); private heldKey = ''; private swing = 0; private attackCd = 0;
@@ -62,6 +65,13 @@ export class Game {
     this.world = new World(save.seed, atlas.texture, settings.render);
     this.world.setRenderDist(settings.render);
     this.world.loadEdits(save.edits);
+    // custom blocks: this world's own list first (their numbers are saved in the terrain), then your library
+    resetCustom();
+    this.baseBlocks = BLOCKS.length;
+    save.customBlocks = save.customBlocks ?? [];
+    for (const c of save.customBlocks) this.paintCustom(c);
+    if (!(save as any).guest) for (const c of library()) if (!save.customBlocks.some(x => x.key === c.key) && this.paintCustom(c)) save.customBlocks.push(c);
+    this.world.syncTables(this.baseBlocks);
     this.graves = save.graves ?? []; this.explored = new Set(save.explored ?? []); this.waypoints = save.waypoints ?? [];
     this.time = save.time ?? DAY * 0.3; this.day = Math.floor(this.time / DAY) + 1;
     this.scene.add(this.world.group);
@@ -98,7 +108,31 @@ export class Game {
     this.inv.onChange = () => this.onChange();
     this.loadPlayer(save.player);
   }
-  shake = 0; redFlash = 0;
+  shake = 0; redFlash = 0; baseBlocks = 0; god = false;
+  /** register a custom block and paint its six faces into the atlas */
+  paintCustom(c: CustomBlock) {
+    const r = registerCustom(c); if (!r) return false;
+    r.tiles.forEach((tile, f) => this.atlas.setTile(tile, facePixels(c.faces[f])));
+    forgetIcon(c.key);
+    return true;
+  }
+  /** a block made in the Block Maker joins this world (the host decides the numbers in co-op) */
+  addCustomBlock(c: CustomBlock) {
+    if (this.isGuest) { this.net.blockdef?.(c); return true; }
+    if (this.data.customBlocks!.some(x => x.key === c.key)) return true;
+    if (!this.paintCustom(c)) { this.toast(t('bm.full'), 'bad'); return false; }
+    this.data.customBlocks!.push(c);
+    this.world.syncTables(this.baseBlocks);
+    this.net.blockdefs?.(this.data.customBlocks!);
+    this.save(); this.onChange();
+    return true;
+  }
+  /** co-op guests: take the host's list (same order as the host) */
+  applyCustomList(list: CustomBlock[]) {
+    let changed = false;
+    for (const c of list) if (!customIds.some(id => BLOCKS[id].key === c.key)) { this.paintCustom(c); changed = true; }
+    if (changed) { this.world.syncTables(this.baseBlocks); this.onChange(); }
+  }
 
   private loadPlayer(p: any) {
     const r = mulberry32((this.data.seed ^ Date.now()) >>> 0);
@@ -156,6 +190,8 @@ export class Game {
     this.animals.update(dt, p, others);
     this.updateRemotes(dt);
     this.updateDrops(dt);
+    this.tickFuses(dt);
+    if (this.site) this.siteTick(dt);
     this.updateParticles(dt);
     this.updateCamera(dt);
     this.updateHeld(dt);
@@ -197,6 +233,15 @@ export class Game {
     if (inp.hit('prev')) { this.inv.sel = (this.inv.sel + 8) % 9; this.onChange(); }
     if (inp.hit('pick') && hit) { const k = BLOCKS[hit.id].key; const i = this.inv.slots.findIndex((s, j) => j < 9 && s?.k === k); if (i >= 0) { this.inv.sel = i; this.onChange(); } }
     const held = this.inv.held(), def = held ? ITEM[held.k] : null;
+    if (this.ghost) { this.ghostTick(hit, dir); this.breaking = null; this.crack.visible = false; return; }
+    if (this.selecting) {
+      if (hit && (inp.hit('attack') || inp.hit('use'))) {
+        const v = new THREE.Vector3(hit.x, hit.y, hit.z); inp.primary = false;
+        if (!this.selecting.a) { this.selecting.a = v; this.spray(v.clone().addScalar(0.5), [1, 0.85, 0.2], 10); }
+        else { const r = capture((x, y, z) => this.world.get(x, y, z), this.selecting.a, v, this.selecting.name); this.selecting = null; this.onCaptured?.(r); }
+      }
+      return;
+    }
     // attack animals first
     this.attackCd -= dt;
     if ((inp.hit('attack') || (inp.primary && this.attackCd <= 0))) {
@@ -260,7 +305,9 @@ export class Game {
     if (!hit) return;
     const bd = BLOCKS[hit.id];
     if (hit.id === B.grave) { this.openGrave(hit.x, hit.y, hit.z); return; }
-    if (bd.station || hit.id === B.chest) { this.onOpenStation?.(bd.station ?? 'chest'); return; }
+    if (hit.id === B.loot_chest) { this.openLoot(hit.x, hit.y, hit.z); return; }
+    if (bd.station || hit.id === B.chest || EXTRA[hit.id]?.storage) { this.onOpenStation?.(bd.station ?? 'chest'); return; }
+    if ((hit.id === B.tnt || EXTRA[hit.id]?.explosive) && (held?.k === 'flint_and_steel' || held?.k === 'torch')) { this.ignite(hit.x, hit.y, hit.z); return; }
     if (held?.k === 'water_bucket' && def) { this.placeAt(hit, B.water); this.inv.slots[this.inv.sel] = { k: 'bucket', n: 1 }; this.onChange(); return; }
     if (held?.k === 'flint_and_steel') { this.placeAt(hit, B.fire); this.inv.wear(1); return; }
     if (def?.block != null) {
@@ -268,6 +315,103 @@ export class Game {
     }
   }
   onOpenStation?: (s: string) => void;
+  private fuses: { x: number; y: number; z: number; t: number }[] = [];
+
+  // ---------------- blueprints ----------------
+  ghost: { bp: Blueprint; g: Ghost; rot: number; o: [number, number, number] | null } | null = null;
+  site: { bp: Blueprint; name: string; cells: ReturnType<typeof place>; i: number; t: number; missing: string[]; done: number; total: number; at: THREE.Vector3 } | null = null;
+  selecting: { a: THREE.Vector3 | null; name: string } | null = null;
+  onCaptured?: (r: Blueprint | 'big' | 'empty') => void;
+  startGhost(bp: Blueprint) { this.cancelGhost(); this.ghost = { bp, g: new Ghost(bp, this.scene), rot: 0, o: null }; }
+  cancelGhost() { if (this.ghost) { this.ghost.g.dispose(this.scene); this.ghost = null; } }
+  startSelecting(name: string) { this.cancelGhost(); this.selecting = { a: null, name }; }
+  private ghostTick(hit: any, dir: THREE.Vector3) {
+    const gh = this.ghost!, inp = this.input;
+    if (inp.hit('rotate')) gh.rot = (gh.rot + 1) & 3;
+    let o: [number, number, number] | null = null;
+    if (hit) {
+      const odd = gh.rot & 1, w = odd ? gh.bp.d : gh.bp.w, d = odd ? gh.bp.w : gh.bp.d;
+      // centre the plan on where you look, a little in front of you
+      o = [hit.x + hit.nx - (w >> 1) + Math.round(dir.x * (d / 2)), hit.y + hit.ny, hit.z + hit.nz - (d >> 1) + Math.round(dir.z * (d / 2))];
+    }
+    gh.o = o;
+    gh.g.mesh.visible = !!o;
+    if (o) gh.g.update(o[0], o[1], o[2], gh.rot, true);
+    if (o && (inp.hit('attack') || inp.hit('use'))) {
+      const cells = place(gh.bp, o[0], o[1], o[2], gh.rot).filter(c => c.id >= 0);
+      // build from the bottom up, clearing space first in each layer
+      cells.sort((a, b) => a.y - b.y || (a.id === 0 ? -1 : 0) - (b.id === 0 ? -1 : 0));
+      const name = gh.bp.nameKey ? t(gh.bp.nameKey as any) : gh.bp.name;
+      this.site = { bp: gh.bp, name, cells, i: 0, t: 0, missing: [], done: 0, total: cells.filter(c => c.id > 0).length, at: new THREE.Vector3(o[0], o[1], o[2]) };
+      this.cancelGhost();
+      this.toast(t('bp.stayNear'));
+      inp.primary = false;
+    }
+  }
+  private siteTick(dt: number) {
+    const s = this.site!;
+    if (s.at.distanceTo(this.player.pos) > 40) return;
+    s.t -= dt;
+    while (s.t <= 0 && this.site) {
+      if (s.i >= s.cells.length) { this.toast(t('bp.done', { name: s.name }), 'good'); sound.play('discover'); this.site = null; return; }
+      const c = s.cells[s.i], cur = this.world.get(c.x, c.y, c.z);
+      if (cur < 0) { s.t = 0.5; return; }                                   // not loaded yet
+      if (c.id === 0) { if (cur !== 0 && BLOCKS[cur].hard >= 0 && cur !== B.grave) this.world.set(c.x, c.y, c.z, 0); s.i++; continue; }
+      if (cur === c.id) { s.i++; s.done++; continue; }
+      if (this.inv.count(c.key) > 0) {
+        this.inv.remove(c.key, 1); this.world.set(c.x, c.y, c.z, c.id); s.i++; s.done++; s.missing = [];
+        s.t += 0.06; if (Math.random() < 0.3) sound.play('place', { pos: new THREE.Vector3(c.x, c.y, c.z), vol: 0.4 });
+      } else {
+        // count what's still needed from here on
+        const left = new Map<string, number>();
+        for (let k = s.i; k < s.cells.length; k++) { const q = s.cells[k]; if (q.id > 0 && this.world.get(q.x, q.y, q.z) !== q.id) left.set(q.key, (left.get(q.key) ?? 0) + 1); }
+        s.missing = [...left].map(([k, n]) => `${Math.max(0, n - this.inv.count(k))}× ${nm(ITEM[k])}`).filter(x => !x.startsWith('0×'));
+        s.t = 1; return;
+      }
+    }
+  }
+  siteStatus() {
+    if (this.selecting) return t('bp.cornerHint') + ` (${this.selecting.a ? 2 : 1}/2)`;
+    if (this.ghost) return this.input.touch ? t('bp.touchHint') : t('bp.rotateHint');
+    if (!this.site) return '';
+    const s = this.site;
+    return t('bp.building', { name: s.name, done: s.done, total: s.total }) + (s.missing.length ? ' · ' + t('bp.waiting', { list: s.missing.slice(0, 4).join(', ') }) : '');
+  }
+  planNeeds(bp: Blueprint) { return needs(bp).map(([k, n]) => ({ k, n, have: this.inv.count(k) })); }
+  ignite(x: number, y: number, z: number) { if (!this.fuses.some(f => f.x === x && f.y === y && f.z === z)) { this.fuses.push({ x, y, z, t: 2.5 }); sound.play('fire', { pos: new THREE.Vector3(x, y, z) }); } }
+  private tickFuses(dt: number) {
+    for (const f of [...this.fuses]) {
+      f.t -= dt;
+      if (Math.random() < dt * 20) this.spray(new THREE.Vector3(f.x + 0.5, f.y + 1, f.z + 0.5), [1, 0.7, 0.2], 1);
+      if (f.t > 0) continue;
+      this.fuses = this.fuses.filter(q => q !== f);
+      this.explode(f.x + 0.5, f.y + 0.5, f.z + 0.5, 3.2);
+    }
+  }
+  /** blow a round hole; chain-reacts other explosives and hurts you if you're close */
+  explode(cx: number, cy: number, cz: number, r: number) {
+    const R = Math.ceil(r);
+    for (let dy = -R; dy <= R; dy++) for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      if (dx * dx + dy * dy + dz * dz > r * r) continue;
+      const x = Math.floor(cx) + dx, y = Math.floor(cy) + dy, z = Math.floor(cz) + dz, id = this.world.get(x, y, z);
+      if (id <= 0 || BLOCKS[id].hard < 0 || id === B.reinforced_concrete || id === B.blast_door) continue;
+      if ((id === B.tnt || EXTRA[id]?.explosive) && !(dx === 0 && dy === 0 && dz === 0)) { this.ignite(x, y, z); continue; }
+      this.world.set(x, y, z, 0);
+    }
+    this.spray(new THREE.Vector3(cx, cy, cz), [0.4, 0.4, 0.4], 40); this.spray(new THREE.Vector3(cx, cy, cz), [1, 0.6, 0.1], 30);
+    sound.play('thunder', { pos: new THREE.Vector3(cx, cy, cz), range: 80 }); this.shake = 0.6;
+    const d = this.player.pos.distanceTo(new THREE.Vector3(cx, cy, cz));
+    if (d < r * 2.2) this.player.hurt((r * 2.2 - d) * 14, 'fire', this.inv.armorValue());
+    for (const b of this.animals.list) { const bd = b.pos.distanceTo(new THREE.Vector3(cx, cy, cz)); if (bd < r * 2) this.animals.damage(b, (r * 2 - bd) * 20, new THREE.Vector3(cx, cy, cz)); }
+  }
+  /** an old chest in a ruin or village: its loot is yours the first time it's opened */
+  openLoot(x: number, y: number, z: number) {
+    const items = lootFor(x, y, z, this.world.gen.column(x, z).biome, this.world.seed);
+    this.world.set(x, y, z, B.chest);
+    for (const [k, n] of items) this.give(k, n);
+    this.toast(items.map(([k, n]) => `+${n} ${nm(ITEM[k])}`).join(', '), 'good');
+    sound.play('discover');
+  }
   private placeAt(hit: any, id: number) {
     const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
     const cur = this.world.get(x, y, z);
@@ -508,7 +652,7 @@ export class Game {
     this.swing = Math.max(0, this.swing - dt * 3.2);
     const bob = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5 && this.player.onGround ? Math.sin(performance.now() / 110) * 0.02 : 0;
     const sw = Math.sin(this.swing * Math.PI);
-    this.held.position.set(0.42, -0.42 + bob - sw * 0.1, -0.62 - sw * 0.1);
+    this.held.position.set(0.44, -0.46 + bob - sw * 0.12, -0.6 - sw * 0.12);
     this.held.rotation.set(-sw * 1.1, 0.15, 0);
     this.held.visible = this.player.downed <= 0 && !this.player.dead;
   }
@@ -521,8 +665,8 @@ export class Game {
     if (!key) return;
     const d = ITEM[key];
     if (d?.block != null) {
-      const tiles = BLOCK_TILES[d.block], mats = [1, 1, 0, 2, 1, 1].map(i => { const tx = new THREE.CanvasTexture(this.atlas.canvasFor(tiles[i])); tx.magFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: tx, transparent: true, alphaTest: 0.4 }); });
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), mats); cube.position.set(0, 0.08, -0.08); cube.rotation.y = 0.6; this.held.add(cube);
+      const six = tiles6(d.block), mats = six.map(tile => { const tx = new THREE.CanvasTexture(this.atlas.canvasFor(tile)); tx.magFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: tx, transparent: true, alphaTest: 0.4 }); });
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), mats); cube.position.set(-0.02, 0.14, -0.14); cube.rotation.y = 0.6; this.held.add(cube);
       return;
     }
     const toolModel: Record<string, string> = { axe: 'tool-axe', pickaxe: 'tool-pickaxe', shovel: 'tool-shovel', hoe: 'tool-hoe' };
@@ -531,12 +675,12 @@ export class Game {
       const g = await loadModel(tm); if (!g || this.heldKey !== key) return;
       const m = g.scene.clone(true);
       m.traverse((o: any) => { if (o.isMesh) { o.material = o.material.clone(); if (/head|blade|metal|stone/i.test(o.material.name || '') || o.material.color.getHSL({ h: 0, s: 0, l: 0 }).l > 0.45) o.material.color.set(d.color); } });
-      m.scale.setScalar(0.55); m.rotation.set(-0.3, Math.PI / 2, 0.15); m.position.set(0, -0.05, -0.12); this.held.add(m);
+      m.scale.setScalar(1.05); m.rotation.set(-0.35, Math.PI / 2, 0.15); m.position.set(0, -0.18, -0.08); this.held.add(m);
       return;
     }
     const tex = new THREE.TextureLoader().load(itemIcon(key)); tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
-    const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }));
-    sp.position.set(0, 0.1, -0.1); sp.rotation.y = -0.4; this.held.add(sp);
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }));
+    sp.position.set(-0.02, 0.18, -0.14); sp.rotation.y = -0.4; this.held.add(sp);
   }
 
   // ======================= other players =======================

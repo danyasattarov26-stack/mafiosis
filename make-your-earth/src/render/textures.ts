@@ -3,10 +3,11 @@
   Nothing is copied from another game: each pattern is a small procedural recipe fed with the block's colours.
 */
 import * as THREE from 'three';
-import { TILES, TILE_PX, ATLAS_COLS, ATLAS_ROWS, BLOCK_TILES } from '../world/tiles';
+import { TILES, TILE_PX, ATLAS_COLS, ATLAS_ROWS } from '../world/tiles';
 import type { Tex } from '../shared/blocks';
 import { BLOCKS } from '../shared/blocks';
 import { ITEM, type ItemDef } from '../shared/items';
+import { tiles6 } from '../shared/custom';
 
 const hex = (c: string) => { const n = parseInt(c.replace('#', '').padEnd(6, '0').slice(0, 6), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 function rng(seed: number) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
@@ -93,6 +94,7 @@ export function buildAtlas(): Atlas {
 const iconCache = new Map<string, string>();
 let atlasRef: Atlas | null = null;
 export const setIconAtlas = (a: Atlas) => { atlasRef = a; iconCache.clear(); };
+export const forgetIcon = (key: string) => iconCache.delete(key);
 
 export function itemIcon(key: string): string {
   let url = iconCache.get(key);
@@ -106,13 +108,13 @@ export function itemIcon(key: string): string {
   return url;
 }
 function drawBlockIcon(g: CanvasRenderingContext2D, id: number) {
-  const [tTop, tSide] = BLOCK_TILES[id], b = BLOCKS[id];
+  const six = tiles6(id), tTop = six[2], tSide = six[4], tSide2 = six[0], b = BLOCKS[id];
   const top = atlasRef!.canvasFor(tTop), side = atlasRef!.canvasFor(tSide);
   if ((b.render ?? 'cube') !== 'cube') { g.drawImage(top, 4, 4, 32, 32); return; }
   // a little isometric cube: top, left and right faces
   g.save(); g.setTransform(1, 0.5, -1, 0.5, 20, 3); g.drawImage(top, 0, 0, 16, 16); g.restore();
   g.save(); g.setTransform(1, 0.5, 0, 1, 4, 11); g.drawImage(side, 0, 0, 16, 16); g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(0, 0, 16, 16); g.restore();
-  g.save(); g.setTransform(1, -0.5, 0, 1, 20, 19); g.drawImage(side, 0, 0, 16, 16); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 0, 16, 16); g.restore();
+  g.save(); g.setTransform(1, -0.5, 0, 1, 20, 19); g.drawImage(atlasRef!.canvasFor(tSide2), 0, 0, 16, 16); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 0, 16, 16); g.restore();
 }
 function drawItemIcon(g: CanvasRenderingContext2D, it: ItemDef) {
   const c1 = it.color, c2 = it.color2 ?? '#6b4a2b';

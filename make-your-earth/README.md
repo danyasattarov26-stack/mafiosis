@@ -6,7 +6,15 @@ Live: https://make-your-earth.vercel.app
 
 - **World:** 16×16×256 voxel chunks streamed around you; eight biomes (ocean, island beach, temperate forest, jungle, desert, savanna, tundra/ice age, mountains), rivers, caves, lava and ores.
 - **Survival:** health, hunger, thirst, stamina, body temperature and sickness (raw meat, dirty water, cold). When you drop to 0 you're downed for 60 s and a friend can revive you. If nobody does, your things go into a grave only you can open, and you wake up as a new person somewhere else.
-- **Content:** 85 blocks, 250 items, 173 recipes, 30 animal species. All of it is data in `src/shared`.
+- **Content:** 92 built-in blocks, 257 items, 180 recipes, 30 animal species. All of it is data in `src/shared`.
+- **Building:**
+  - **Blueprints:** use a sheet of blueprint paper at the blueprint table. The ready-made plans are a hut, log cabin, house, watchtower and nuclear bunker, or save your own build by marking two corners. A see-through ghost shows where it goes; it then builds itself from your inventory.
+  - **Block Maker (B):** paint all six faces of a new block, choose what it does, and give it a recipe.
+- **Structures in the world:** villages (houses, smithy, well, farm), cabins, watchtowers, desert pyramids and wells, jungle temples, igloos and mammoth-hunter camps, beach huts, shipwrecks and old ruins. Old chests inside hold loot the first time someone opens them.
+- **Admin panel (F2, world owner):**
+  - kick, ban or mute players, go to them or bring them to you, see their inventory;
+  - give anyone items;
+  - set the time and weather, message everyone, heal yourself, god mode.
 - **Devices:** keyboard and mouse, touch (joystick + buttons) and gamepad; English and European Portuguese.
 
 ## Controls
@@ -26,7 +34,10 @@ Live: https://make-your-earth.vercel.app
 | Q | D-pad down | Drop one item |
 | T | D-pad up | Chat (co-op) |
 | 1–9, wheel | LB / RB | Hotbar |
-| Esc | Start | Pause |
+| B | — | Block Maker |
+| R | — | Rotate a blueprint while placing it |
+| F2 | — | Admin panel (world owner) |
+| Esc | Start | Pause / cancel a blueprint |
 
 Keys can be rebound in Settings.
 

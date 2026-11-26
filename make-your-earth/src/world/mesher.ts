@@ -18,7 +18,7 @@ export const OPAQUE = new Uint8Array(N);   // full cube that hides faces behind 
 export const TRANSP = new Uint8Array(N);
 export const LIGHTEMIT = new Uint8Array(N);
 export const SKYBLOCK = new Uint8Array(N); // stops sunlight (0 = passes, 1 = dims, 15 = blocks)
-export function buildTables(extra: { render?: string; transparent?: boolean; light?: number }[] = []) {
+export function buildTables(extra: { render?: string; transparent?: boolean; light?: number; key?: string }[] = []) {
   [...BLOCKS, ...extra].forEach((b, i) => {
     if (i >= N) return;
     const r = b.render ?? 'cube';
@@ -30,8 +30,11 @@ export function buildTables(extra: { render?: string; transparent?: boolean; lig
   });
 }
 buildTables();
-export const TILE3 = new Uint16Array(N * 3);
-export function setTiles(tiles: [number, number, number][]) { tiles.forEach((t, i) => { TILE3[i * 3] = t[0]; TILE3[i * 3 + 1] = t[1]; TILE3[i * 3 + 2] = t[2]; }); }
+/** tile per face: +x, −x, +y (top), −y (bottom), +z, −z */
+export const TILE6 = new Uint16Array(N * 6);
+export function setTiles(tiles: number[][]) {
+  tiles.forEach((t, i) => { const six = t.length === 6 ? t : [t[1], t[1], t[0], t[2], t[1], t[1]]; for (let f = 0; f < 6; f++) TILE6[i * 6 + f] = six[f]; });
+}
 setTiles(BLOCK_TILES);
 
 export interface MeshData { pos: Float32Array; tex: Float32Array; tile: Float32Array; light: Float32Array; index: Uint32Array }
@@ -130,7 +133,7 @@ export function meshChunk(data: Uint8Array, nb: (Uint8Array | null)[]): { solid:
             if (OPAQUE[b] || (b === a && TRANSP[a])) continue;
           }
           const li = dir[1] < 0 || dir[1] >= CH ? 0xf0 : L[pidx(dir[0], dir[1], dir[2])];
-          const tile = TILE3[a * 3 + (d === 1 ? (sgn > 0 ? 0 : 2) : 1)];
+          const tile = TILE6[a * 6 + face];
           mask[n] = ((tile + 1) | ((li >> 4) << 12) | ((li & 15) << 16) | (RENDER[a] === 3 ? 1 << 20 : 0));
         }
         // greedy: grow rectangles of equal keys
@@ -155,7 +158,7 @@ export function meshChunk(data: Uint8Array, nb: (Uint8Array | null)[]): { solid:
   for (let y = 0; y <= top; y++) for (let z = 0; z < CS; z++) for (let x = 0; x < CS; x++) {
     const a = P[pidx(x, y, z)];
     if (RENDER[a] !== 2) continue;
-    const l = L[pidx(x, y, z)], sky = (l >> 4) / 15, blk = Math.max(l & 15, LIGHTEMIT[a]) / 15, t = TILE3[a * 3];
+    const l = L[pidx(x, y, z)], sky = (l >> 4) / 15, blk = Math.max(l & 15, LIGHTEMIT[a]) / 15, t = TILE6[a * 6 + 2];
     const h = (y * 7 + x * 13 + z * 5) % 3 * 0.08;
     for (const [x0, z0, x1, z1] of [[0.15, 0.15, 0.85, 0.85], [0.15, 0.85, 0.85, 0.15]]) {
       for (const flip of [false, true]) {

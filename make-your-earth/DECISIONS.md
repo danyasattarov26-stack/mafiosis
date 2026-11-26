@@ -16,3 +16,15 @@
 8. **Sounds are CC0 only.** This avoids attribution chains and any non-commercial licences, though every sound is still credited. Any missing file falls back to a short synthesised sound.
 9. **Felled trees come down whole.** Chopping a trunk brings the logs above it down too, which is a bit more realistic than floating trees.
 10. **The tundra is called "Tundra (Ice Age)"**, so mammoths there make sense.
+11. **The admin panel is in the game, not at `/admin`.** With no server, the world owner is in charge:
+    - It opens with F2 or from the pause menu, for single player or the co-op host.
+    - Bans are by player name and saved with the world.
+    - Guests can't open it.
+12. **What Block Maker functions do:**
+    - **Door:** a block you can walk through.
+    - **Ladder:** climbable, drawn like a ladder.
+    - **Conveyor:** always carries you east.
+    - **Storage:** opens the crafting panel. Chests don't hold items yet.
+    - **Explosive:** lit with a fire starter or torch; goes off after 2.5 s, radius 3.
+13. **Custom blocks belong to each world.** A world saves its own list, because block numbers are stored in the terrain. Your library is added to worlds you own. In co-op the host assigns numbers and shares the list; guests' new blocks go through the host. Up to about 70 custom blocks fit per world. There's no "promote to global" without a server.
+14. **Structures sit on a 144-block grid and depend only on the seed.** About 55% of grid cells with a suitable biome get one. Old chests become normal chests once looted, so loot is taken only once, also in co-op.

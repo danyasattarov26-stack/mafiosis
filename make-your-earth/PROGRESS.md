@@ -34,8 +34,14 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
     - text chat with filter;
     - revive.
   - **Not built:** accounts, shards, voice and the server load test, because the author dropped them.
-- [ ] M5 Building: blueprints, Block Maker, fire spread, land claims
+- [~] **M5 Building:**
+  - **Done:**
+    - blueprints: 5 ready-made plans, save your own, ghost placement with rotation, builds from your inventory;
+    - Block Maker: six painted faces, pencil, fill, eraser, colour picker, mirror and copy tools, 3D preview, nine functions, a recipe, your library, shared in co-op;
+    - world structures with loot;
+    - explosives.
+  - **Not yet:** fire spread, land claims.
 - [ ] M6 Vehicles
 - [ ] M7 Society
 - [ ] M8 Science & space
-- [ ] M9 Polish: admin panel (not applicable without a server), mobile tuning on real devices
+- [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

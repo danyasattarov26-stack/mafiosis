@@ -199,7 +199,8 @@ R('harness', 1, { leather: 3, rope: 2 }, 'workbench'); R('paper', 3, { plant_fib
 R('journal', 1, { paper: 6, leather: 1 }, 'workbench'); R('wool', 1, { string: 4 }, 'workbench'); R('map_item', 1, { paper: 4, ink: 1 }, 'workbench');
 R('leather', 1, { hide: 1, salt: 1 }, 'workbench'); R('anvil', 1, { iron_ingot: 6, cobblestone: 4 }, 'workbench'); R('compass', 1, { iron_ingot: 2, copper_wire: 1 }, 'workbench');
 R('stew', 1, { '#cooked_meat': 1, potato: 1, carrot: 1, clean_water: 1 }, 'campfire'); R('fish_soup', 1, { cooked_fish: 2, clean_water: 1, salt: 1 }, 'campfire');
-R('jerky', 3, { '#raw_meat': 2, salt: 1 }, 'workbench'); R('blueprint_paper', 2, { paper: 2, ink: 1 }, 'workbench'); R('tiles', 4, { clay_ball: 2, glass_pane: 1 }, 'furnace');
+R('jerky', 3, { '#raw_meat': 2, salt: 1 }, 'workbench'); R('blueprint_paper', 2, { paper: 2, ink: 1 }, 'workbench'); R('snow_bricks', 1, { snowball: 4 }); R('mossy_bricks', 1, { stone_bricks: 1, plant_fiber: 2 }, 'workbench');
+R('chiseled_sandstone', 2, { sandstone: 2 }, 'workbench'); R('hay_bale', 1, { wheat_item: 9 }); R('bookshelf', 1, { '#planks': 6, paper: 6 }, 'workbench'); R('cracked_bricks', 1, { stone_bricks: 1 }, 'furnace'); R('tiles', 4, { clay_ball: 2, glass_pane: 1 }, 'furnace');
 // cooking: every raw meat can be cooked at a campfire or furnace
 for (const m of MEATS) { R(`cooked_${m.k}`, 1, { [`raw_${m.k}`]: 1 }, 'campfire'); R(`cooked_${m.k}`, 1, { [`raw_${m.k}`]: 1 }, 'furnace'); }
 R('clean_water', 1, { dirty_water: 1 }, 'campfire'); R('clean_water', 1, { dirty_water: 1 }, 'furnace'); R('baked_potato', 1, { potato: 1 }, 'campfire');

@@ -5,9 +5,12 @@
 import { Noise, hash2, hash3 } from './noise';
 import { B } from '../shared/blocks';
 import { BIOMES, BIOME_ID } from '../shared/biomes';
+import { siteAt, rotate, CELL, type Site } from './structures';
 
 export const CS = 16, CH = 256, SEA = 62;
 export const idx = (x: number, y: number, z: number) => x + z * CS + y * CS * CS;
+const PLANTS = new Set([B.tall_grass, B.flower_red, B.flower_yellow, B.berry_bush, B.dead_bush, B.fern, B.wheat]);
+const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.pine_leaves, B.jungle_leaves, B.acacia_leaves, B.palm_leaves]);
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export interface Column { h: number; biome: number; river: number }
@@ -100,7 +103,43 @@ export class TerrainGen {
         r -= t.chance;
       }
     }
+    this.structures(d, ox, oz);
     return d;
+  }
+
+  // ---------------- structures ----------------
+  private sites = new Map<string, Site | null>();
+  site(gx: number, gz: number) {
+    const k = `${gx},${gz}`;
+    if (!this.sites.has(k)) { if (this.sites.size > 4000) this.sites.clear(); this.sites.set(k, siteAt(gx, gz, this.seed, (x, z) => this.column(x, z), SEA)); }
+    return this.sites.get(k)!;
+  }
+  /** structure sites whose buildings could reach this chunk */
+  sitesNear(ox: number, oz: number) {
+    const out: Site[] = [], m = 56;
+    for (let gz = Math.floor((oz - m) / CELL); gz <= Math.floor((oz + CS + m) / CELL); gz++)
+      for (let gx = Math.floor((ox - m) / CELL); gx <= Math.floor((ox + CS + m) / CELL); gx++) { const s = this.site(gx, gz); if (s) out.push(s); }
+    return out;
+  }
+  private structures(d: Uint8Array, ox: number, oz: number) {
+    for (const site of this.sitesNear(ox, oz)) for (const part of site.parts) {
+      const sh = part.shape, odd = part.rot & 1, rw = odd ? sh.d : sh.w, rd = odd ? sh.w : sh.d;
+      const x0 = part.x - (rw >> 1), z0 = part.z - (rd >> 1);
+      if (x0 > ox + CS || x0 + rw < ox - 1 || z0 > oz + CS || z0 + rd < oz - 1) continue;
+      const y0 = this.column(part.x, part.z).h + 1;
+      // foundation: fill any gap between the floor and the ground
+      for (let rz = 0; rz < rd; rz++) for (let rx = 0; rx < rw; rx++) {
+        const lx = x0 + rx - ox, lz = z0 + rz - oz;
+        if (lx < 0 || lx >= CS || lz < 0 || lz >= CS) continue;
+        for (let y = y0 - 1; y > y0 - 10 && y > 0; y--) { const i = idx(lx, y, lz), id = d[i]; if (id && id !== B.water && !PLANTS.has(id) && !LEAVES.has(id)) break; d[i] = sh.found; }
+      }
+      for (const c of sh.cells) {
+        const [rx, rz] = rotate(c, sh.w, sh.d, part.rot);
+        const lx = x0 + rx - ox, lz = z0 + rz - oz, y = y0 + c[1];
+        if (lx < 0 || lx >= CS || lz < 0 || lz >= CS || y < 1 || y >= CH) continue;
+        d[idx(lx, y, lz)] = c[3] === 0 && y <= SEA ? B.water : c[3];
+      }
+    }
   }
 
   private ore(x: number, y: number, z: number, biome: number) {

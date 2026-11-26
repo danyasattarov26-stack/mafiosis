@@ -7,13 +7,16 @@ import { itemIcon } from '../render/textures';
 import { HOTBAR, SLOTS, ARMOR_SLOTS, type Stack } from '../game/inventory';
 import type { Game } from '../game/game';
 import { sound } from '../audio/audio';
+import { builtinBlueprints, myBlueprints, saveBlueprint, deleteBlueprint, type Blueprint } from '../game/blueprints';
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string, root: ParentNode = document) => root.querySelector(s) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Hud {
   root: HTMLElement;
-  open: 'inv' | 'map' | 'pause' | 'dead' | 'grave' | null = null;
+  open: 'inv' | 'map' | 'pause' | 'dead' | 'grave' | 'bp' | 'bm' | 'admin' | null = null;
+  onBlockMaker: () => void = () => {};
+  onAdmin: () => void = () => {};
   station = 'hand';
   private cursor: Stack | null = null;      // item held on the mouse while moving stacks
   private recipeFilter = ''; private onlyMakeable = false;
@@ -30,13 +33,14 @@ export class Hud {
       <div class="bars"></div>
       <div class="hotbar"></div>
       <div class="toasts"></div>
+      <div class="sitebar" hidden></div>
       <div class="vignette"></div>
       <div class="revive" hidden></div>
       <div class="loading"><div class="spinner"></div><p>${t('hud.loading')}</p></div>
       <div class="panel" hidden></div>
       <div class="cursor-item" hidden></div>
       ${game.input.touch ? `<div class="touchbtns">
-        <button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="menu">☰</button>
+        <button data-act="rotate" class="b-rot">⟳</button><button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="menu">☰</button>
       </div>
       <div class="touchact"><button class="b-hit" data-hold="primary">⛏<small>${t('touch.break')}</small></button><button class="b-use" data-act="use">✋<small>${t('touch.use')}</small></button><button class="b-jump" data-hold="jump">⤒<small>${t('touch.jump')}</small></button><button class="b-run" data-toggle="sprint">🏃<small>${t('touch.sprint')}</small></button><button class="b-eat" data-act="eat">🍖</button></div>` : ''}`;
     document.body.appendChild(this.root);
@@ -86,6 +90,8 @@ export class Hud {
     }
     if (mode === 'down') $('.secs', rv).textContent = t('hud.downedHint', { s: Math.ceil(p.downed) });
     if (this.coop) $('.coopinfo', this.root).textContent = `${t('hud.roomCode', { code: this.coop.code })} · ${t('hud.players', { n: this.coop.players })}`;
+    const sb = $('.sitebar', this.root), st = g.siteStatus();
+    sb.hidden = !st; if (st && sb.textContent !== st) sb.textContent = st;
     const c = $('.cross', this.root); c.classList.toggle('busy', !!g.breaking);
     c.style.setProperty('--p', String(Math.min(1, g.breaking?.p ?? 0)));
   }
@@ -150,7 +156,7 @@ export class Hud {
     panel.innerHTML = `
       <div class="inv">
         <div class="col left">
-          <h3>${t('inv.title')}</h3>
+          <h3>${t('inv.title')} <button class="btn small" data-bm>🧱 ${t('bm.open')}</button></h3>
           <div class="armor">${ARMOR_SLOTS.map((a, i) => slot(inv.armor[i], 'a' + i, 'armor-' + a)).join('')}${slot(inv.offhand, 'off', 'offhand')}</div>
           <div class="grid main">${inv.slots.slice(HOTBAR, SLOTS).map((s, i) => slot(s, String(HOTBAR + i))).join('')}</div>
           <div class="grid hot">${inv.slots.slice(0, HOTBAR).map((s, i) => slot(s, String(i), i === inv.sel ? 'sel' : '')).join('')}</div>
@@ -165,6 +171,7 @@ export class Hud {
         <button class="close">✕</button>
       </div>`;
     $('.close', panel).onclick = () => this.close();
+    panel.querySelector<HTMLElement>('[data-bm]')!.onclick = () => { this.close(); this.onBlockMaker(); };
     const search = $<HTMLInputElement>('.rsearch', panel);
     search.oninput = () => { this.recipeFilter = search.value; const pos = search.selectionStart; this.renderInventory(); const s2 = $<HTMLInputElement>('.rsearch', panel); s2.focus(); s2.setSelectionRange(pos, pos); };
     $<HTMLInputElement>('.rmake', panel).onchange = e => { this.onlyMakeable = (e.target as HTMLInputElement).checked; this.renderInventory(); };
@@ -230,15 +237,54 @@ export class Hud {
   }
   private renderCursor() { const c = $('.cursor-item', this.root); c.hidden = !this.cursor; c.innerHTML = this.stackHTML(this.cursor); }
 
+  // ---------------- blueprint table ----------------
+  openBlueprints() {
+    this.open = 'bp'; this.game.paused = true; this.root.classList.add('panel-open');
+    const panel = $('.panel', this.root); panel.hidden = false;
+    const g = this.game, paper = g.inv.count('blueprint_paper');
+    const card = (bp: Blueprint, mine: boolean) => {
+      const need = g.planNeeds(bp), ok = need.every(n => n.have >= n.n);
+      const name = bp.nameKey ? t(bp.nameKey as any) : bp.name;
+      return `<div class="bpcard"><div class="bphead"><b>${esc(name)}</b><small>${bp.w}×${bp.h}×${bp.d} · ${t('bp.blocks', { n: need.reduce((a, n) => a + n.n, 0) })}</small></div>
+        <div class="ins">${need.map(n => `<span class="${n.have >= n.n ? 'have' : 'need'}" title="${esc(nm(ITEM[n.k]))}"><img src="${itemIcon(n.k)}" alt="">${n.n}</span>`).join('')}</div>
+        <div class="row"><button class="btn ${ok ? 'big' : ''}" data-use="${bp.id}">${t('bp.make')}</button>${mine ? `<button class="icon" data-delbp="${bp.id}">🗑</button>` : ''}</div></div>`;
+    };
+    const mine = myBlueprints(), built = builtinBlueprints();
+    panel.innerHTML = `<div class="bp"><button class="close">✕</button>
+      <h3>${t('bp.title')} <small>· ${nm(ITEM.blueprint_paper)}: ${paper}</small></h3>
+      <h4>${t('bp.builtin')}</h4><div class="bpgrid">${built.map(b => card(b, false)).join('')}</div>
+      <h4>${t('bp.mine')}</h4><div class="bpgrid">${mine.map(b => card(b, true)).join('') || '<p class="muted">—</p>'}</div>
+      <h4>${t('bp.save')}</h4><p class="muted">${t('bp.cornerHint')}</p>
+      <div class="row"><input class="bpname" maxlength="24" placeholder="${t('bp.saveName')}"><button class="btn" data-mark>${t('bp.cornerA')} → ${t('bp.cornerB')}</button></div></div>`;
+    $('.close', panel).onclick = () => this.close();
+    panel.querySelectorAll<HTMLElement>('[data-use]').forEach(b => b.onclick = () => {
+      const bp = [...built, ...mine].find(x => x.id === b.dataset.use)!;
+      if (g.inv.count('blueprint_paper') < 1) { this.toast(t('bp.noPaper'), 'bad'); return; }
+      g.inv.remove('blueprint_paper', 1); g.startGhost(bp); this.close(); g.input.requestLock();
+    });
+    panel.querySelectorAll<HTMLElement>('[data-delbp]').forEach(b => b.onclick = () => { deleteBlueprint(b.dataset.delbp!); this.openBlueprints(); });
+    panel.querySelector<HTMLElement>('[data-mark]')!.onclick = () => {
+      const name = (panel.querySelector('.bpname') as HTMLInputElement).value.trim() || t('bp.mine');
+      g.startSelecting(name.slice(0, 24)); this.close(); g.input.requestLock();
+    };
+    g.onCaptured = r => {
+      if (r === 'big') this.toast(t('bp.tooBig'), 'bad');
+      else if (r === 'empty') this.toast(t('bp.empty'), 'bad');
+      else { saveBlueprint(r); this.toast(t('bp.saved', { name: r.name, n: r.cells.filter(c => c[3] !== 'air').length }), 'good'); sound.play('discover'); }
+    };
+  }
+
   openPause(onSettings: () => void) {
     this.open = 'pause'; this.game.paused = true; this.root.classList.add('panel-open');
     const panel = $('.panel', this.root); panel.hidden = false;
     panel.innerHTML = `<div class="pause"><h2>${t('hud.paused')}</h2>
       <button class="btn big" data-a="resume">${t('hud.resume')}</button>
       <button class="btn" data-a="settings">${t('tab.settings')}</button>
+      ${this.game.isGuest ? '' : `<button class="btn" data-a="admin">🛠 ${t('admin.open')}</button>`}
       <button class="btn" data-a="quit">${t('hud.saveQuit')}</button></div>`;
     panel.querySelector<HTMLElement>('[data-a=resume]')!.onclick = () => { this.close(); this.game.input.requestLock(); };
     panel.querySelector<HTMLElement>('[data-a=settings]')!.onclick = () => onSettings();
+    const ad = panel.querySelector<HTMLElement>('[data-a=admin]'); if (ad) ad.onclick = () => { this.close(); this.onAdmin(); };
     panel.querySelector<HTMLElement>('[data-a=quit]')!.onclick = () => this.onQuit();
   }
   showDeath(newName: string | null, grave: { x: number; z: number } | null) {

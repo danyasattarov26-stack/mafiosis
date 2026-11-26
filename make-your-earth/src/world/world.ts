@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CS, CH, SEA, idx, TerrainGen } from './gen';
 import { BLOCKS } from '../shared/blocks';
+import { BLOCK_TILES } from './tiles';
 
 export interface Chunk { cx: number; cz: number; data: Uint8Array; solid: THREE.Mesh | null; water: THREE.Mesh | null; dirty: boolean; meshing: boolean; seq: number; lastSeq: number }
 export interface Hit { x: number; y: number; z: number; nx: number; ny: number; nz: number; id: number; dist: number }
@@ -64,6 +65,12 @@ export class World {
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = e => this.onWorker(e.data);
     this.worker.postMessage({ t: 'init', seed });
+  }
+  /** tell the worker about custom blocks and their textures, then redraw everything */
+  syncTables(baseCount: number) {
+    const extra = BLOCKS.slice(baseCount).map(b => ({ render: b.render, transparent: b.transparent, light: b.light, key: b.key }));
+    this.worker.postMessage({ t: 'tables', extra, tiles: BLOCK_TILES });
+    for (const c of this.chunks.values()) c.dirty = true;
   }
   setRenderDist(r: number) { this.renderDist = r; const far = r * CS; this.uniforms.uFogNear.value = far * 0.55; this.uniforms.uFogFar.value = far * 0.95; }
 

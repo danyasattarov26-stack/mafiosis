@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { World } from '../world/world';
 import { BLOCKS, B } from '../shared/blocks';
 import type { Input } from './input';
+import { EXTRA } from '../shared/custom';
 
 export const PW = 0.3, PH = 1.8, EYE = 1.62;
 export interface Stats { health: number; hunger: number; thirst: number; stamina: number; temp: number; sick: number }
@@ -23,7 +24,7 @@ export class Player {
   onStep: (blockBelow: number) => void = () => {};
   onHurt: (amount: number, cause: Cause) => void = () => {};
   onDowned: () => void = () => {};
-  autoStep = false;
+  autoStep = false; god = false;
 
   solidAt(w: World, x: number, y: number, z: number) {
     const id = w.get(Math.floor(x), Math.floor(y), Math.floor(z));
@@ -49,7 +50,8 @@ export class Player {
     const feet = this.blockAt(w, 0.1), head = this.blockAt(w, EYE);
     this.inWater = feet === B.water || this.blockAt(w, 0.9) === B.water;
     this.headInWater = head === B.water;
-    this.onLadder = feet === B.ladder || this.blockAt(w, 1) === B.ladder;
+    const mid = this.blockAt(w, 1);
+    this.onLadder = feet === B.ladder || mid === B.ladder || !!EXTRA[feet]?.climb || !!EXTRA[mid]?.climb;
     this.crouching = inp.crouch && !this.inWater;
     const tired = this.stats.stamina < 2;
     let speed = this.crouching ? 1.6 : 4.3;
@@ -75,6 +77,9 @@ export class Player {
       const ahead = new THREE.Vector3(this.pos.x + wx * 0.5, this.pos.y + 0.5, this.pos.z + wz * 0.5);
       if (this.solidAt(w, ahead.x, ahead.y, ahead.z) && !this.solidAt(w, ahead.x, ahead.y + 1, ahead.z) && !this.solidAt(w, this.pos.x, this.pos.y + 2.2, this.pos.z)) this.vel.y = 7.4;
     }
+    // conveyor belts carry you east
+    const under = this.blockAt(w, -0.2);
+    if (this.onGround && EXTRA[under]?.conveyor) this.vel.x += (3 - this.vel.x) * Math.min(1, dt * 8);
     this.physics(dt, w, wx, wz, sprinting);
     // breath
     if (this.headInWater) { this.air -= dt; if (this.air < 0) { this.air = 0; this.hurt(8 * dt, 'drown'); } }
@@ -129,7 +134,7 @@ export class Player {
   }
 
   hurt(amount: number, cause: Cause, armor = 0) {
-    if (this.downed > 0 || this.dead || amount <= 0) return;
+    if (this.downed > 0 || this.dead || amount <= 0 || this.god) return;
     const reduced = cause === 'animal' || cause === 'player' ? amount * (1 - Math.min(0.7, armor * 0.04)) : amount;
     this.stats.health -= reduced;
     this.onHurt(reduced, cause);

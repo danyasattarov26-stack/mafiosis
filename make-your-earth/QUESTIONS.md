@@ -8,3 +8,5 @@
 | Where should a new life start after death? | Up to ~1.5 km away from where you died, on dry land, avoiding tundra when possible. | Your grave is a walk away; it's marked on the map. |
 | What happens when the host leaves a co-op world? | Guests stop receiving updates; they can quit and the host can host again later. | Host migration isn't built. |
 | How should admin tools work without a server? | Not built; see DECISIONS.md #1. | Needs a backend if public servers come back. |
+| Should blueprints cost something to use? | 1 blueprint paper per use (paper + ink at a workbench, also found in loot). | Easy to change in `hud.ts`. |
+| How fast should a blueprint build? | About 16 blocks a second while you stay within 40 blocks. | Feels like a crew working; bunkers take ~20 s. |

@@ -9,10 +9,14 @@ import { Input } from './game/input';
 import { Game, randomName, type SaveData } from './game/game';
 import { Hud } from './ui/hud';
 import { Menu, newWorld, type PlayChoice } from './ui/menu';
+import { BlockMaker } from './ui/blockmaker';
+import { Admin } from './ui/admin';
 import { sound } from './audio/audio';
 import { Session } from './net/session';
 import { inbox, newCode, profile, type Invite } from './net/coop';
 import { MAX_PLAYERS } from './net/coop';
+import { RECIPES } from './shared/items';
+import { BLOCK_ID } from './shared/blocks';
 
 declare const __BUILD__: string;
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -69,7 +73,7 @@ async function play(c: PlayChoice) {
     hideLoading();
     if (!w) { session.close(); session = null; menu.show(true); toast(t('play.notFound'), 'bad'); return; }
     let mine: any = null; try { mine = JSON.parse(localStorage.getItem('mye-guest-' + w.save.id) || 'null'); } catch { /* none */ }
-    const save: SaveData = { ...w.save, player: mine ?? { pos: w.spawn, yaw: 0, name: settings.name || randomName(), stats: undefined, inv: null } };
+    const save: SaveData = { ...w.save, guest: true, player: mine ?? { pos: w.spawn, yaw: 0, name: settings.name || randomName(), stats: undefined, inv: null } } as any;
     startGame(save, c.code, !mine);
     return;
   }
@@ -94,7 +98,7 @@ function startGame(save: SaveData, code?: string, newGuest = false) {
   makeHud();
   let pending = 0;
   game.onChange = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; hud?.refresh(); }); };
-  game.onOpenStation = s => { input.exitLock(); hud!.openInventory(s === 'chest' ? 'hand' : s); };
+  game.onOpenStation = s => { input.exitLock(); if (s === 'blueprint') hud!.openBlueprints(); else hud!.openInventory(s === 'chest' ? 'hand' : s); };
   game.onDeath = grave => {
     const name = game!.rebirth();
     input.exitLock();
@@ -104,6 +108,7 @@ function startGame(save: SaveData, code?: string, newGuest = false) {
     session.attach(game);
     session.onToast = (m, k) => hud?.toast(m, k);
     session.onChat = () => renderChat();
+    session.onKicked = banned => { const msg = t(banned ? 'admin.banned' : 'admin.kicked'); quit(); toast(msg, 'bad'); };
     hud!.coop = { code: session.room.code, players: 1 };
     inbox.status = () => ({ name: game?.player.name ?? '', playing: save.name, room: session?.room.code ?? null, players: session?.players() ?? 1 });
     if (session.host) setTimeout(() => toast(t('hud.roomCode', { code: session!.room.code })), 1500);
@@ -152,7 +157,7 @@ function hideLoading() { const el = $('#joining'); if (el) el.hidden = true; }
 
 // ---------- the loop ----------
 let last = performance.now(), fpsT = 0, frames = 0;
-(window as any).__mye = { get game() { return game; }, get session() { return session; }, renderer, play, quit, settings, fps: 0 };
+(window as any).__mye = { get game() { return game; }, get session() { return session; }, renderer, play, quit, settings, fps: 0, recipes: RECIPES, blocks: BLOCK_ID };
 renderer.setAnimationLoop(now => {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   frames++; fpsT += dt; if (fpsT >= 1) { (window as any).__mye.fps = frames / fpsT; frames = 0; fpsT = 0; }
@@ -160,11 +165,17 @@ renderer.setAnimationLoop(now => {
   input.poll(dt);
   // keyboard shortcuts for panels
   if (hud) {
-    const esc = input.hit('menu'), lost = input.hit('unlocked') && !hud.open && !chatOpen;
+    if (overlay) { if (input.hit('menu')) overlay.close(); }
+    else {
+    if (input.hit('blockmaker') && !hud.open) openBlockMaker();
+    if (input.hit('admin') && !hud.open) openAdmin();
+    if (input.hit('menu') && (game.ghost || game.selecting)) { game.cancelGhost(); game.selecting = null; input.endFrame(); }
+    const esc = input.hit('menu'), lost = input.hit('unlocked') && !hud.open && !chatOpen && !overlay;
     if (esc && hud.open && hud.open !== 'dead') { hud.close(); input.requestLock(); }
     else if ((esc || lost) && !hud.open) { input.exitLock(); hud.openPause(() => openSettingsInGame()); }
     if (input.hit('inventory') && !game.downedFriendNear()) { if (hud.open === 'inv') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openInventory('hand'); } }
     if (input.hit('map')) { if (hud.open === 'map') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openMap(); } }
+    }
     if (input.hit('chat') && session && !hud.open) openChat();
   }
   const inPanel = !!hud?.open || chatOpen;
@@ -178,6 +189,18 @@ renderer.setAnimationLoop(now => {
   renderer.render(game.scene, game.camera);
 });
 
+let overlay: BlockMaker | Admin | null = null;
+function openBlockMaker() {
+  if (!game || !hud || overlay) return;
+  input.exitLock(); hud.open = 'bm'; game.paused = true;
+  overlay = new BlockMaker(game, () => { overlay = null; if (hud) { hud.open = null; } input.requestLock(); });
+}
+function openAdmin() {
+  if (!game || !hud || overlay) return;
+  if (game.isGuest) { toast(t('admin.onlyOwner'), 'bad'); return; }
+  input.exitLock(); hud.open = 'admin'; game.paused = true;
+  overlay = new Admin(game, session, () => { overlay = null; if (hud) hud.open = null; input.requestLock(); });
+}
 function openSettingsInGame() {
   const wrap = document.createElement('div'); wrap.className = 'overlay';
   const body = document.createElement('div'); body.className = 'body settings-overlay'; wrap.appendChild(body);
@@ -191,6 +214,8 @@ function makeHud() {
   game.toast = (m, k) => hud?.toast(m, k);
   hud.onRebirth = () => input.requestLock();
   hud.onQuit = () => quit();
+  hud.onBlockMaker = () => openBlockMaker();
+  hud.onAdmin = () => openAdmin();
   if (session) hud.coop = { code: session.room.code, players: session.players() };
   hud.refresh();
 }
