@@ -105,6 +105,7 @@ function startGame(save: SaveData, code?: string, newGuest = false) {
   makeHud();
   let pending = 0;
   game.onChange = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; hud?.refresh(); }); };
+  game.onEnding = () => { input.exitLock(); hud?.showEnding(); };
   game.onOpenContainer = k => { input.exitLock(); hud!.openContainer(k); };
   game.onContainer = k => { if (hud?.open === 'inv' && hud.container === k) { if (!game!.containers[k]) { hud.close(); input.requestLock(); } else hud.renderInventory(); } };
   game.onOpenStation = s => { input.exitLock(); if (s === 'blueprint') hud!.openBlueprints(); else if (s === 'designer') { game!.stations.add('designer'); openBlockMaker(); } else hud!.openInventory(s === 'chest' ? 'hand' : s); };
@@ -182,6 +183,7 @@ renderer.setAnimationLoop(now => {
     if (esc && hud.open && hud.open !== 'dead') { hud.close(); input.requestLock(); }
     else if ((esc || lost) && !hud.open) { input.exitLock(); hud.openPause(() => openSettingsInGame()); }
     if (input.hit('inventory') && !game.downedFriendNear()) { if (hud.open === 'inv') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openInventory('hand'); } }
+    if (input.hit('journal')) { if (hud.open === 'journal') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openJournal(); } }
     if (input.hit('map')) { if (hud.open === 'map') { hud.close(); input.requestLock(); } else if (!hud.open) { input.exitLock(); hud.openMap(); } }
     }
     if (input.hit('chat') && session && !hud.open) openChat();

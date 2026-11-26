@@ -23,7 +23,7 @@ export class Projectiles {
   /** a mob arrow reached a player: `target` is null for you, or the other player's id */
   onHitPlayer: (target: string | null, dmg: number, from: THREE.Vector3) => void = () => {};
   onStick: (pos: THREE.Vector3) => void = () => {};
-  constructor(private world: World, private animals: Animals) {}
+  constructor(public world: World, private animals: Animals) {}
 
   fire(from: THREE.Vector3, vel: THREE.Vector3, owner: ArrowOwner, dmg: number, shooter?: Beast) {
     const mesh = new THREE.Group();

@@ -64,4 +64,12 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
   - admin panel hidden (F2 ×3, or five taps on the coordinates) and locked with a PIN; item picker with icons;
   - mods: a Mods tab, five official mods, owner-only publishing, try-before-publishing in the admin panel, MODS.md;
   - fixed: painted blocks with see-through pixels made the ground next to them invisible.
+- [x] **The story update:**
+  - a goal: Star Compass → four Starstones in ancient vaults → Skyward Beacon → ride the column of light to the Sky Isles → ring four Sky Bells → defeat the Sky Colossus → plant the World Seed → the ending (a World Tree grows, the night sky lights up);
+  - the Sky Isles: a second world of floating islands, blossom trees, clouds, wisps, the arena and the altar home; works in co-op (the host takes everyone across);
+  - journal (J), goal line, compass arrow, boss health bar, ending screen with your stats;
+  - ten new animals: reindeer, moose, bison, black panther, snow leopard, llama, snake (poisonous), bat (caves), butterfly, glow jellyfish;
+  - polar bear, arctic fox, mammoth and others properly recoloured;
+  - admin: teleport and build any structure in front of you;
+  - health bars no longer show through walls.
 - [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

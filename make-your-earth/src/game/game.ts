@@ -13,6 +13,9 @@ import { Inventory, type Stack } from './inventory';
 import { Animals, loadModel, type Beast, type PetSave } from './animals';
 import { Projectiles } from './projectiles';
 import { MOD_BLOCKS, runHooks, modIds } from '../mods/mods';
+import { newQuest, progress, nearestVault, STARSTONES, type QuestData } from './quest';
+import { SKY_ALTAR, SKY_TOP, SKY_BELLS, type Dim } from '../world/gen';
+import { BUILDERS, rotate } from '../world/structures';
 import { newChest, newFurnace, posKey, tickFurnace, contents, type Container } from './containers';
 import { BLOCKS, B } from '../shared/blocks';
 import { ITEM } from '../shared/items';
@@ -53,7 +56,7 @@ export const randomName = (r = Math.random) => `${FIRST[Math.floor(r() * FIRST.l
 
 export interface Grave { id: string; x: number; y: number; z: number; owner: string; name: string; items: Stack[]; at: number }
 export interface Remote { id: string; name: string; look: number; obj: THREE.Group; mixer: THREE.AnimationMixer | null; actions: Record<string, THREE.AnimationAction>; cur: string; pos: THREE.Vector3; yaw: number; anim: string; downed: boolean; label: THREE.Sprite; seen: number }
-export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
+export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; dim?: Dim; skyEdits?: any; skyContainers?: Record<string, Container>; skyCrops?: Record<string, number>; quest?: QuestData; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
 
 export class Game {
   scene = new THREE.Scene();
@@ -73,7 +76,8 @@ export class Game {
   toast: (msg: string, kind?: string) => void = () => {};
   onChange: () => void = () => {};        // inventory/stats changed: refresh UI
   net: { block?: (x: number, y: number, z: number, id: number) => void; grave?: (g: Grave | null, removeId?: string) => void; blockdef?: (c: CustomBlock) => void; blockdefs?: (l: CustomBlock[]) => void;
-    hurt?: (peer: string, dmg: number, from: THREE.Vector3) => void; arrow?: (from: THREE.Vector3, vel: THREE.Vector3) => void; cont?: (key: string, c: Container | null) => void;
+    hurt?: (peer: string, dmg: number, from: THREE.Vector3) => void; travel?: () => void; dim?: (to: Dim, at: [number, number, number]) => void;
+    beam?: (x: number, y: number, z: number) => void; ending?: () => void; ended?: () => void; toastAll?: (key: string, vars?: Record<string, any>) => void; arrow?: (from: THREE.Vector3, vel: THREE.Vector3) => void; cont?: (key: string, c: Container | null) => void;
     sleep?: () => void; tame?: (id: string) => void; saddle?: (id: string) => void; ride?: (b: Beast) => void; crop?: (key: string, t: number | null) => void } = {};
   isGuest = false;
   private highlight: THREE.LineSegments; private crack: THREE.Mesh;
@@ -85,16 +89,18 @@ export class Game {
 
   constructor(public renderer: THREE.WebGLRenderer, public input: Input, public atlas: Atlas, save: SaveData, profileId: string) {
     this.data = save; this.profileId = profileId;
-    this.world = new World(save.seed, atlas.texture, settings.render);
+    this.dim = save.dim ?? 'earth';
+    save.quest = { ...newQuest(), ...(save.quest ?? {}) };
+    this.world = new World(save.seed, atlas.texture, settings.render, this.dim);
     this.world.setRenderDist(settings.render);
     // custom blocks: this world's own list first (their numbers are saved in the terrain), then your library
     resetCustom();
     this.baseBlocks = BLOCKS.length;
     // worlds saved before new built-in blocks were added: custom block numbers move up to make room
     const oldBase = save.baseBlocks ?? 92;
-    if (oldBase !== this.baseBlocks && save.edits) for (const list of Object.values(save.edits as Record<string, [number, number][]>)) for (const e of list) if (e[1] >= oldBase) e[1] += this.baseBlocks - oldBase;
+    if (oldBase !== this.baseBlocks) for (const ed of [save.edits, save.skyEdits]) if (ed) for (const list of Object.values(ed as Record<string, [number, number][]>)) for (const e of list) if (e[1] >= oldBase) e[1] += this.baseBlocks - oldBase;
     save.baseBlocks = this.baseBlocks;
-    this.world.loadEdits(save.edits);
+    this.world.loadEdits(this.dim === 'sky' ? save.skyEdits : save.edits);
     save.customBlocks = save.customBlocks ?? [];
     for (const c of save.customBlocks) this.paintCustom(c);
     if (!(save as any).guest) for (const c of [...MOD_BLOCKS, ...library()]) if (!save.customBlocks.some(x => x.key === c.key) && this.paintCustom(c)) save.customBlocks.push(c);
@@ -108,7 +114,8 @@ export class Game {
     this.scene.add(this.animals.group);
     this.animals.monsterCap = settings.preset === 'potato' ? 6 : settings.preset === 'low' ? 9 : 14;
     this.projectiles = new Projectiles(this.world, this.animals); this.scene.add(this.projectiles.group);
-    this.containers = save.containers ?? {}; this.crops = save.crops ?? {};
+    this.containers = (this.dim === 'sky' ? save.skyContainers : save.containers) ?? {}; this.crops = (this.dim === 'sky' ? save.skyCrops : save.crops) ?? {};
+    this.animals.setWorld(this.world, this.dim);
     this.hemi = new THREE.HemisphereLight('#cfe4ff', '#5a4a3a', 1.6); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff3dd', 1.8); this.sun.position.set(30, 80, 20); this.scene.add(this.sun);
     this.scene.add(this.camera); this.camera.add(this.held); this.camera.add(this.offHeld);
@@ -129,23 +136,24 @@ export class Game {
     this.weatherFx = new THREE.Points(wg, new THREE.PointsMaterial({ color: '#aac8e8', size: 0.08, transparent: true, opacity: 0.7 })); this.weatherFx.frustumCulled = false; this.weatherFx.visible = false;
     this.scene.add(this.weatherFx);
 
-    this.world.onBlockChange = (x, y, z, id) => this.net.block?.(x, y, z, id);
+    this.hookWorld();
     // clouds: one big soft layer that drifts with the wind
     if (settings.preset !== 'potato') {
       this.cloudTex = makeCloudTexture(); this.cloudTex.wrapS = this.cloudTex.wrapT = THREE.RepeatWrapping; this.cloudTex.repeat.set(3, 3);
       this.clouds = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), new THREE.MeshBasicMaterial({ map: this.cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.85, side: THREE.DoubleSide }));
       this.clouds.rotation.x = -Math.PI / 2; this.clouds.renderOrder = -1; this.scene.add(this.clouds);
     }
-    this.animals.onAttack = (b, dmg, target) => {
-      if (target === this.player.pos) { if (b.pos.distanceTo(this.player.pos) < (b.def.reach ?? 1.6) + 1) this.hurtBy(dmg, b.pos, false); return; }
-      for (const r of this.remotes.values()) if (r.pos === target && b.pos.distanceTo(r.pos) < (b.def.reach ?? 1.6) + 1) this.net.hurt?.(r.id, dmg, b.pos);
+    this.animals.onAttack = (b, dmg, target, area) => {
+      const near = (p: THREE.Vector3) => area || b.pos.distanceTo(p) < (b.def.reach ?? 1.6) + 1;
+      if (target === this.player.pos) { if (near(this.player.pos)) { this.hurtBy(dmg, b.pos, false); if (b.def.poison) this.player.stats.sick = Math.min(1, this.player.stats.sick + b.def.poison); } return; }
+      for (const r of this.remotes.values()) if (r.pos === target && near(r.pos)) this.net.hurt?.(r.id, dmg, b.pos);
     };
     this.animals.onShoot = (b, from, at) => {
       const vel = Projectiles.aim(from, at, 24, 1.6);
-      this.projectiles.fire(from, vel, 'mob', b.def.damage ?? 4, b); this.net.arrow?.(from, vel);
+      this.projectiles.fire(from, vel, 'mob', b.def.boss ? 6 : b.def.damage ?? 4, b); this.net.arrow?.(from, vel);
       sound.play('bow', { pos: from, range: 30, vol: 0.6 });
     };
-    this.animals.onFx = (k, pos) => { if (k === 'fire') this.spray(pos, [1, 0.55, 0.1], 2); else if (k === 'hearts') this.spray(pos, [1, 0.4, 0.6], 14); else this.spray(pos, [0.5, 0.5, 0.5], 6); };
+    this.animals.onFx = (k, pos) => { if (k === 'slam') { this.spray(pos.clone().setY(pos.y + 0.3), [0.7, 0.6, 0.9], 40); this.shake = Math.max(this.shake, 0.5); sound.play('thunder', { pos, vol: 0.6, range: 60 }); } else if (k === 'fire') this.spray(pos, [1, 0.55, 0.1], 2); else if (k === 'hearts') this.spray(pos, [1, 0.4, 0.6], 14); else this.spray(pos, [0.5, 0.5, 0.5], 6); };
     this.animals.onPetKill = (drops, at) => { for (const [k, n] of drops) this.dropItem(k, n, at.clone().setY(at.y + 0.6), false); };
     this.animals.ownerPos = owner => owner === this.profileId ? this.player.pos : this.remotes.get(owner)?.pos ?? null;
     this.projectiles.onHitBeast = (b, dmg, from) => {
@@ -231,9 +239,9 @@ export class Game {
 
   save() {
     if (this.isGuest) return;
-    this.data.edits = this.world.saveEdits(); this.data.player = this.playerJSON(); this.data.graves = this.graves;
+    this.storeDim(); this.data.player = this.playerJSON(); this.data.graves = this.graves;
     this.data.time = this.time; this.data.played = Date.now(); this.data.explored = [...this.explored].slice(-60000); this.data.waypoints = this.waypoints;
-    this.data.containers = this.containers; this.data.crops = this.crops; this.data.pets = this.animals.pets(this.profileId);
+    if (this.dim === 'earth') this.data.pets = this.animals.pets(this.profileId);
     try { localStorage.setItem('mye-world-' + this.data.id, JSON.stringify(this.data)); } catch (e) { console.warn('save failed', e); }
   }
 
@@ -279,6 +287,10 @@ export class Game {
     this.projectiles.update(dt, p.pos, [...this.remotes.values()], !this.isGuest);
     this.bowCd -= dt; this.sleepFade = Math.max(0, this.sleepFade - dt * 0.5);
     if (!this.isGuest) { this.furnaceTick(dt); this.cropTick(dt); }
+    this.questTick(dt); this.beamTick(dt);
+    if (this.slowFall > 0) { this.slowFall -= dt; p.vel.y = Math.max(p.vel.y, -2.5); (p as any).fallStart = p.pos.y; }
+    // fell off the Sky Isles: the sky catches you
+    if (this.dim === 'sky' && p.pos.y < 40 && !p.dead) { p.pos.set(SKY_ALTAR[0] + 2.5, SKY_ALTAR[1] + 12, SKY_ALTAR[2] + 2.5); p.vel.set(0, 0, 0); this.slowFall = 4; p.hurt(8, 'fall'); this.toast(t('sky.caught'), 'bad'); }
     this.updateRemotes(dt);
     this.updateDrops(dt);
     this.tickFuses(dt);
@@ -376,6 +388,9 @@ export class Game {
   hitAnimal(beast: any, dmg: number, from: THREE.Vector3, to: 'me' | string = 'me', knock = 1) {
     const drops = this.animals.damage(beast, dmg, from, knock);
     if (drops) {
+      const q = this.data.quest!;
+      if (beast.def.monster || beast.def.bandit || beast.def.boss) q.kills++;
+      if (beast.def.boss && !this.isGuest) { q.colossus = true; this.toast(t('quest.colossusDown'), 'good'); sound.play('discover'); this.net.toastAll?.('quest.colossusDown'); }
       runHooks('kill', this, { key: beast.def.key, x: beast.pos.x, y: beast.pos.y, z: beast.pos.z, by: to });
       if (to === 'me') { for (const [k, n] of drops) this.give(k, n); this.toast(drops.map(([k, n]) => `+${n} ${nm(ITEM[k])}`).join(', '), 'good'); }
       else this.giveTo?.(to, drops);
@@ -407,6 +422,9 @@ export class Game {
     if (hit.id === B.grave) { this.openGrave(hit.x, hit.y, hit.z); return; }
     if (hit.id === B.loot_chest) { this.openLoot(hit.x, hit.y, hit.z); return; }
     if (hit.id === B.wooden_door || hit.id === B.wooden_door_open) { this.toggleDoor(hit.x, hit.y, hit.z); return; }
+    if (hit.id === B.ancient_vault) { this.openVault(hit.x, hit.y, hit.z); return; }
+    if (hit.id === B.sky_beacon || hit.id === B.sky_altar) { this.useBeacon(hit.x, hit.y, hit.z, held); return; }
+    if (hit.id === B.sky_bell) { this.world.set(hit.x, hit.y, hit.z, B.sky_bell_rung); sound.play('bell', { pos: new THREE.Vector3(hit.x, hit.y, hit.z), range: 200 }); this.spray(new THREE.Vector3(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5), [0.5, 0.85, 1], 30); this.toast(t('quest.bellRung'), 'good'); this.questT = 0; return; }
     if (hit.id === B.bed) { this.sleep(hit.x, hit.y, hit.z); return; }
     if (hit.id === B.chest || hit.id === B.barrel || EXTRA[hit.id]?.storage) { this.openContainer(hit.x, hit.y, hit.z, 'chest'); return; }
     if (hit.id === B.furnace) { this.openContainer(hit.x, hit.y, hit.z, 'furnace'); return; }
@@ -440,8 +458,184 @@ export class Game {
         if (this.placeAt(hit, def.block)) { this.world.set(x, y + 1, z, B.wooden_door); this.inv.takeOne(this.inv.sel); sound.play('door_close', { vol: 0.5 }); }
         return;
       }
-      if (this.placeAt(hit, def.block)) { this.inv.takeOne(this.inv.sel); sound.play('place', { vol: 0.5 }); this.swing = 0.5; }
+      if (this.placeAt(hit, def.block)) {
+        this.inv.takeOne(this.inv.sel); sound.play('place', { vol: 0.5 }); this.swing = 0.5;
+        if (def.block === B.sky_beacon && this.dim === 'earth') { this.data.quest!.beacon = [hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz]; this.toast(t('quest.beaconPlaced'), 'good'); }
+      }
     }
+  }
+
+  // ---------------- worlds, the quest and the ending ----------------
+  dim: Dim = 'earth';
+  slowFall = 0; questT = 0; compass: { x: number; z: number; label: string; dist: number } | null = null;
+  private beam: { x: number; y: number; z: number; t: number; mesh: THREE.Group } | null = null; private lift = 0; private compassT = 0;
+  onEnding?: () => void;
+  onDimChange?: () => void;
+  private hookWorld() { this.world.onBlockChange = (x, y, z, id) => this.net.block?.(x, y, z, id); }
+  /** keep this world's changes in the save (each world has its own) */
+  private storeDim() {
+    if (this.dim === 'earth') { this.data.edits = this.world.saveEdits(); this.data.containers = this.containers; this.data.crops = this.crops; }
+    else { this.data.skyEdits = this.world.saveEdits(); this.data.skyContainers = this.containers; this.data.skyCrops = this.crops; }
+  }
+  /** move everyone here to the other world */
+  switchDim(to: Dim) {
+    if (to === this.dim) return;
+    this.storeDim();
+    if (this.dim === 'earth' && !this.isGuest) this.data.pets = this.animals.pets(this.profileId);
+    this.dismount(); this.cancelGhost(); this.site = null; this.selecting = null;
+    this.animals.clear(); this.projectiles.clear(); this.clearBeam();
+    for (const d of this.drops) this.scene.remove(d.obj); this.drops = [];
+    this.scene.remove(this.world.group); this.world.dispose();
+    this.dim = to; this.data.dim = to;
+    this.world = new World(this.data.seed, this.atlas.texture, settings.render, to);
+    this.world.setRenderDist(settings.render);
+    this.world.loadEdits(to === 'sky' ? this.data.skyEdits : this.data.edits);
+    this.world.syncTables(this.baseBlocks);
+    this.hookWorld(); this.scene.add(this.world.group);
+    this.animals.setWorld(this.world, to); this.projectiles.world = this.world;
+    this.containers = (to === 'sky' ? this.data.skyContainers : this.data.containers) ?? {};
+    this.crops = (to === 'sky' ? this.data.skyCrops : this.data.crops) ?? {};
+    if (to === 'earth' && !this.isGuest) this.animals.loadPets(this.data.pets);
+    if (to === 'sky') this.data.quest!.visited = true;
+    this.ready = false; this.onDimChange?.(); this.onChange();
+  }
+  /** where you arrive in a world */
+  arrival(to: Dim): [number, number, number] {
+    if (to === 'sky') return [SKY_ALTAR[0] + 2.5, SKY_ALTAR[1] + 14, SKY_ALTAR[2] + 3.5];
+    const b = this.data.quest!.beacon;
+    if (b) return [b[0] + 2.5, b[1] + 14, b[2] + 0.5];
+    if (this.bed) return [this.bed[0] + 0.5, this.bed[1] + 3, this.bed[2] + 0.5];
+    const s = this.world.gen.findSpawn(0, 0, Math.random); return [s.x, s.y + 10, s.z];
+  }
+  /** the host takes everyone across; a friend asks the host */
+  travel() {
+    const to: Dim = this.dim === 'earth' ? 'sky' : 'earth';
+    if (this.isGuest) { this.net.travel?.(); return; }
+    this.switchDim(to);
+    const a = this.arrival(to);
+    this.player.pos.set(a[0], a[1], a[2]); this.player.vel.set(0, 0, 0); this.slowFall = 5; this.sleepFade = 1.2;
+    this.net.dim?.(to, a);
+    this.toast(t(to === 'sky' ? 'sky.arrive' : 'sky.home'), 'good');
+  }
+  /** a friend: the host moved everyone */
+  followDim(to: Dim, at: [number, number, number]) {
+    this.switchDim(to);
+    this.player.pos.set(at[0] + (Math.random() - 0.5) * 3, at[1], at[2] + (Math.random() - 0.5) * 3); this.player.vel.set(0, 0, 0); this.slowFall = 5; this.sleepFade = 1.2;
+    this.toast(t(to === 'sky' ? 'sky.arrive' : 'sky.home'), 'good');
+  }
+  /** a column of light: step in and it lifts you to the other world */
+  showBeam(x: number, y: number, z: number, secs = 40) {
+    this.clearBeam();
+    const g = new THREE.Group(), mk = (r: number, o: number, c: string) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 220, 20, 1, true), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); m.position.y = 110; g.add(m); return m; };
+    mk(1.1, 0.25, '#ffe9a0'); mk(0.45, 0.55, '#fffbe8');
+    g.position.set(x + 0.5, y + 1, z + 0.5); this.scene.add(g);
+    this.beam = { x, y, z, t: secs, mesh: g };
+    sound.play('discover', { vol: 0.8 }); sound.play('bell', { vol: 0.5 });
+  }
+  private clearBeam() { if (this.beam) { this.scene.remove(this.beam.mesh); this.beam = null; } this.lift = 0; }
+  private beamTick(dt: number) {
+    const bm = this.beam; if (!bm) return;
+    bm.t -= dt; bm.mesh.rotation.y += dt * 0.6;
+    bm.mesh.children.forEach((m, i) => { ((m as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (i ? 0.5 : 0.22) * Math.min(1, bm.t / 3) * (0.85 + Math.sin(this.time * 6 + i) * 0.15); });
+    if (Math.random() < dt * 30) this.spray(new THREE.Vector3(bm.x + 0.5 + (Math.random() - 0.5), bm.y + 1 + Math.random() * 4, bm.z + 0.5 + (Math.random() - 0.5)), [1, 0.9, 0.5], 1);
+    if (bm.t <= 0) { this.clearBeam(); return; }
+    const p = this.player.pos, inside = Math.hypot(p.x - bm.x - 0.5, p.z - bm.z - 0.5) < 1.2 && p.y > bm.y - 0.5 && p.y < bm.y + 60;
+    if (inside && this.player.downed <= 0) {
+      this.lift += dt; this.player.vel.y = Math.max(this.player.vel.y, 5 + this.lift * 3); (this.player as any).fallStart = p.y;
+      this.flash = Math.min(0.8, this.lift * 0.3);
+      if (this.lift > 2.6) { this.clearBeam(); this.travel(); }
+    } else this.lift = Math.max(0, this.lift - dt);
+  }
+  /** the Skyward Beacon (Earth) or the Sky Altar: light the way across, or plant the World Seed */
+  private useBeacon(x: number, y: number, z: number, held: Stack | null) {
+    if (held?.k === 'world_seed' && this.dim === 'earth') {
+      if (this.data.quest!.ended) { this.toast(t('quest.alreadyEnded')); return; }
+      this.inv.takeOne(this.inv.sel);
+      if (this.isGuest) this.net.ending?.(); else this.ending(x, y, z);
+      return;
+    }
+    this.showBeam(x, y, z); this.net.beam?.(x, y, z);
+    this.toast(t('sky.stepIn'));
+  }
+  /** the end of the story: a great tree grows from the Beacon and the sky lights up */
+  ending(x: number, y: number, z: number) {
+    const q = this.data.quest!; if (q.ended) return;
+    q.ended = true;
+    const set = (dx: number, dy: number, dz: number, id: number) => { const cur = this.world.get(x + dx, y + dy, z + dz); if (cur === 0 || (cur > 0 && BLOCKS[cur].render === 'cross')) this.world.set(x + dx, y + dy, z + dz, id); };
+    for (let dy = 1; dy <= 13; dy++) for (const [dx, dz] of [[2, 0], [3, 0], [2, 1], [3, 1]]) set(dx, dy - 1, dz, B.skywood_log);
+    for (let dy = -4; dy <= 4; dy++) for (let dz = -6; dz <= 7; dz++) for (let dx = -4; dx <= 9; dx++) { const d = (dx - 2.5) ** 2 + (dy * 1.5) ** 2 + (dz - 0.5) ** 2; if (d < 36 && Math.random() < 0.92) set(dx, 14 + dy, dz, B.sky_leaves); }
+    for (let k = 0; k < 24; k++) { const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 7, fx = Math.round(Math.cos(a) * r), fz = Math.round(Math.sin(a) * r), sy = this.world.surface(x + fx, z + fz); if (this.world.get(x + fx, sy + 1, z + fz) === 0) this.world.set(x + fx, sy + 1, z + fz, B.starlight_flower); }
+    this.showBeam(x, y, z, 30);
+    this.net.ended?.();
+    this.save();
+    this.onEnding?.();
+  }
+  /** an ancient vault gives the Starstone of its land, once */
+  private openVault(x: number, y: number, z: number) {
+    const biome = BIOMES[this.world.gen.column(x, z).biome].key;
+    const byBiome: Record<string, string> = { volcanic: 'starstone_ember', tundra: 'starstone_frost', jungle: 'starstone_verdant', ocean: 'starstone_tide', beach: 'starstone_tide' };
+    let item = byBiome[biome] ?? STARSTONES.find(s => this.inv.count(s) === 0) ?? 'starstone_tide';
+    this.world.set(x, y, z, B.chest);
+    if (this.inv.count(item) > 0) { this.give('crystal_shard', 3); this.give('gold_nugget', 4); this.toast(t('quest.vaultHave')); }
+    else { this.give(item, 1); this.toast(t('quest.found', { item: nm(ITEM[item]) }), 'good'); }
+    this.spray(new THREE.Vector3(x + 0.5, y + 1, z + 0.5), [1, 0.85, 0.4], 30); sound.play('discover');
+    this.compassT = 0;
+  }
+  /** the host keeps the story moving: bells rung, the Colossus wakes */
+  private questTick(dt: number) {
+    const q = this.data.quest!;
+    this.compassT -= dt;
+    if (this.compassT <= 0) { this.compassT = 2; this.updateCompass(); }
+    if (this.isGuest || this.dim !== 'sky') return;
+    this.questT -= dt; if (this.questT > 0) return; this.questT = 1.5;
+    for (let i = 0; i < SKY_BELLS.length; i++) {
+      if (q.bells.includes(i)) continue;
+      const [bx, by, bz] = this.world.gen.bellPos(i);
+      if (this.world.get(bx, by, bz) === B.sky_bell_rung || this.world.edits.get(`${Math.floor(bx / CS)},${Math.floor(bz / CS)}`)?.get((bx - Math.floor(bx / CS) * CS) + (bz - Math.floor(bz / CS) * CS) * CS + by * CS * CS) === B.sky_bell_rung) {
+        q.bells.push(i); this.toast(t('quest.bells', { n: q.bells.length }), 'good'); this.net.toastAll?.('quest.bells', { n: q.bells.length });
+      }
+    }
+    const P = this.player.pos;
+    if (q.bells.length >= 4 && !q.colossus && !this.animals.bossAlive() && Math.hypot(P.x, P.z) < 60 && !this.waking) {
+      this.waking = true;
+      this.toast(t('quest.colossusWakes'), 'bad'); this.net.toastAll?.('quest.colossusWakes');
+      sound.play('thunder', { vol: 1 }); this.shake = 0.8;
+      this.animals.spawn('colossus', 0.5, SKY_TOP + 1, -6).then(() => { this.waking = false; });
+    }
+  }
+  private waking = false;
+  private updateCompass() {
+    this.compass = null;
+    if (!this.inv.slots.some(s => s?.k === 'star_compass')) return;
+    const q = this.data.quest!, P = this.player.pos;
+    if (this.dim === 'sky') {
+      const left = SKY_BELLS.map((_, i) => i).filter(i => !q.bells.includes(i));
+      if (left.length) {
+        const pts = left.map(i => this.world.gen.bellPos(i)).sort((a, b) => Math.hypot(a[0] - P.x, a[2] - P.z) - Math.hypot(b[0] - P.x, b[2] - P.z));
+        this.compass = { x: pts[0][0], z: pts[0][2], label: t('quest.cBell'), dist: Math.hypot(pts[0][0] - P.x, pts[0][2] - P.z) };
+      } else if (!q.colossus) this.compass = { x: 0, z: 0, label: t('quest.cArena'), dist: Math.hypot(P.x, P.z) };
+      else this.compass = { x: SKY_ALTAR[0], z: SKY_ALTAR[2], label: t('quest.cAltar'), dist: Math.hypot(SKY_ALTAR[0] - P.x, SKY_ALTAR[2] - P.z) };
+      return;
+    }
+    if (q.beacon && (q.colossus || this.inv.count('world_seed'))) { this.compass = { x: q.beacon[0], z: q.beacon[2], label: t('quest.cBeacon'), dist: Math.hypot(q.beacon[0] - P.x, q.beacon[2] - P.z) }; return; }
+    const need = new Set(STARSTONES.filter(s => this.inv.count(s) === 0));
+    if (q.beacon || !need.size) return;
+    const v = nearestVault(this.world.gen, P.x, P.z, need);
+    if (v) this.compass = { x: v.x, z: v.z, label: nm(ITEM[v.item]), dist: v.d };
+  }
+  /** what to do next, for the HUD */
+  questProgress() { return progress(this.data.quest!, k => this.inv.count(k) > 0); }
+  /** admin: build a structure in front of you */
+  spawnStructure(kind: string) {
+    const make = BUILDERS[kind]; if (!make) return false;
+    const shape = make(mulberry32(Math.floor(Math.random() * 1e9))), rot = Math.floor(Math.random() * 4);
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).setY(0).normalize();
+    const odd = rot & 1, rw = odd ? shape.d : shape.w, rd = odd ? shape.w : shape.d;
+    const cx = Math.floor(this.player.pos.x + dir.x * (Math.max(rw, rd) / 2 + 4)), cz = Math.floor(this.player.pos.z + dir.z * (Math.max(rw, rd) / 2 + 4));
+    const x0 = cx - (rw >> 1), z0 = cz - (rd >> 1), y0 = this.world.surface(cx, cz) + 1;
+    for (let rz = 0; rz < rd; rz++) for (let rx = 0; rx < rw; rx++) for (let y = y0 - 1; y > y0 - 8; y--) { const id = this.world.get(x0 + rx, y, z0 + rz); if (id > 0 && BLOCKS[id].solid !== false) break; this.world.set(x0 + rx, y, z0 + rz, shape.found); }
+    for (const c of shape.cells) { const [rx, rz] = rotate(c, shape.w, shape.d, rot); this.world.set(x0 + rx, y0 + c[1], z0 + rz, c[3]); }
+    return true;
   }
 
   // ---------------- doors, beds, chests, furnaces ----------------
@@ -696,6 +890,7 @@ export class Game {
     const ck = posKey(x, y, z), cont = this.containers[ck];
     if (cont) { for (const st of contents(cont)) this.dropItem(st.k, st.n, new THREE.Vector3(x + 0.5, y + 0.6, z + 0.5), false); delete this.containers[ck]; this.net.cont?.(ck, null); }
     if (this.crops[ck] != null) { delete this.crops[ck]; this.net.crop?.(ck, null); }
+    if (id === B.sky_beacon && this.dim === 'earth') this.data.quest!.beacon = null;
     // the other half of a door goes too
     if (id === B.wooden_door || id === B.wooden_door_open) for (const dy of [-1, 1]) { const o = this.world.get(x, y + dy, z); if (o === B.wooden_door || o === B.wooden_door_open) this.world.set(x, y + dy, z, 0); }
     const tool = held?.tool;
@@ -776,7 +971,9 @@ export class Game {
     const sunH = Math.sin((f - 0.25) * Math.PI * 2);         // −1..1
     this.sunLevel = THREE.MathUtils.clamp(sunH * 1.8 + 0.35, 0.06, 1) * (this.weather === 'clear' ? 1 : this.weather === 'rain' ? 0.75 : 0.55);
     const s = this.sunLevel;
-    const day = new THREE.Color('#87b8e8'), dusk = new THREE.Color('#e8a070'), night = new THREE.Color('#0b1222');
+    const sky = this.dim === 'sky';
+    const day = new THREE.Color(sky ? '#a8b8ff' : '#87b8e8'), dusk = new THREE.Color(sky ? '#ffb0d8' : '#e8a070'), night = new THREE.Color(sky ? '#1a1240' : '#0b1222');
+    if (this.data.quest?.ended && !sky) night.lerp(new THREE.Color(Math.sin(this.time * 0.05) > 0 ? '#0e3a3a' : '#2a1448'), 0.6 + Math.sin(this.time * 0.3) * 0.2);
     const col = night.clone().lerp(sunH > -0.05 && sunH < 0.25 ? dusk : day, Math.min(1, s * 1.1));
     if (this.weather !== 'clear') col.lerp(new THREE.Color('#6f7a86'), 0.5);
     if (!this.underwater) { (this.world.uniforms.uFogColor.value as THREE.Color).copy(col); this.scene.background = col; }
@@ -841,7 +1038,7 @@ export class Game {
   revive() { const p = this.player; if (p.downed <= 0) return; p.downed = 0; p.stats.health = 30; this.onChange(); }
   die() {
     const p = this.player;
-    p.downed = 0; this.dismount();
+    p.downed = 0; this.dismount(); this.data.quest!.deaths++;
     // leave everything in a grave only you can open
     const items = this.inv.all();
     const g: Grave | null = items.length ? this.placeGrave(p.pos, items) : null;
@@ -853,6 +1050,13 @@ export class Game {
   /** you come back as a different person somewhere else in the world */
   rebirth() {
     const p = this.player, r = Math.random;
+    if (this.dim === 'sky') {
+      p.pos.set(SKY_ALTAR[0] + 2.5, SKY_ALTAR[1] + 2, SKY_ALTAR[2] + 2.5); p.vel.set(0, 0, 0);
+      p.stats = { health: 100, hunger: 80, thirst: 80, stamina: 100, temp: 37, sick: 0 };
+      p.name = randomName(); this.look = Math.floor(r() * LOOKS.length); p.dead = false; this.ready = false;
+      this.inv.add('stone_axe', 1); this.freshLife = true; this.onChange(); this.save();
+      return p.name;
+    }
     const bedOk = this.bed && (() => { const id = this.world.get(this.bed![0], this.bed![1], this.bed![2]); return id === B.bed || id < 0; })();
     if (bedOk) { p.pos.set(this.bed![0] + 0.5, this.bed![1] + 1.1, this.bed![2] + 0.5); }
     else {

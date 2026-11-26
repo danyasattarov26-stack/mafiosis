@@ -226,3 +226,29 @@ canvas.prev { width: 220px; height: 220px; background: radial-gradient(circle, #
 .picker .chosen { align-items: center; gap: 8px; } .picker .chosen img { width: 32px; height: 32px; image-rendering: pixelated; } .picker .chosen small { color: #8a97ab; }
 .picker .cats { flex-wrap: wrap; } .picker .aq { flex: 1; }
 .filebtn { display: inline-block; cursor: pointer; margin: 4px 0; }
+
+/* the story */
+.topleft .goal { margin-top: 4px; color: #ffe9a0; font-weight: 600; max-width: 46vw; }
+.bossbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(520px, 70vw); text-align: center; text-shadow: 0 1px 3px #000; }
+.bossbar b { display: block; font-size: 15px; color: #e8d8ff; margin-bottom: 4px; letter-spacing: 1px; }
+.bossbar i { display: block; height: 12px; border-radius: 6px; background: #1a1424cc; border: 1px solid #b07af0; overflow: hidden; }
+.bossbar u { display: block; height: 100%; background: linear-gradient(90deg, #8a4ad8, #e86ad8); transition: width 0.2s; }
+.starcompass { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; text-shadow: 0 1px 3px #000; }
+.starcompass .needle { display: inline-block; font-size: 30px; color: #ffd23f; transition: transform 0.15s; filter: drop-shadow(0 0 6px #ffd23f88); }
+.starcompass small { color: #fff3c0; font-size: 12px; font-weight: 600; }
+.journal { background: #141a24f2; border-radius: 16px; padding: 18px 22px; width: min(640px, 94vw); max-height: 86vh; overflow-y: auto; position: relative; }
+.journal ol { list-style: none; padding: 0; margin: 12px 0; }
+.journal li { padding: 8px 10px; border-radius: 10px; margin-bottom: 6px; background: #1b2230; opacity: 0.7; }
+.journal li.done { opacity: 0.55; } .journal li.done b { color: #6bd36b; }
+.journal li.now { opacity: 1; background: #2a2440; border: 1px solid #b07af0; }
+.journal li p { margin: 4px 0 0; font-size: 13px; color: #b8c4d6; }
+.journal .stones { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.journal .stones span { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; background: #1b2230; opacity: 0.45; font-size: 13px; }
+.journal .stones span.have { opacity: 1; border: 1px solid #ffd23f; }
+.journal .stones img { width: 22px; height: 22px; image-rendering: pixelated; }
+.ending { text-align: center; max-width: 620px; padding: 30px; background: radial-gradient(circle, #2a2050f0, #0b0e18f8); border-radius: 22px; border: 1px solid #b07af066; }
+.ending h1 { font-size: 34px; background: linear-gradient(90deg, #ffe9a0, #f2a8d8, #8ad8ff); -webkit-background-clip: text; background-clip: text; color: transparent; margin: 0 0 16px; }
+.ending p, .ending .estats, .ending button { opacity: 0; animation: fadeup 1.4s forwards; }
+.ending p { font-size: 17px; line-height: 1.5; color: #e8eef6; }
+.ending .estats { color: #ffd23f; margin: 14px 0; }
+@keyframes fadeup { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

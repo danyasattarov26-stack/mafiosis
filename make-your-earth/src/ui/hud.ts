@@ -16,7 +16,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 
 export class Hud {
   root: HTMLElement;
-  open: 'inv' | 'map' | 'pause' | 'dead' | 'grave' | 'bp' | 'bm' | 'admin' | null = null;
+  open: 'inv' | 'map' | 'pause' | 'dead' | 'grave' | 'bp' | 'bm' | 'admin' | 'journal' | 'ending' | null = null;
   onBlockMaker: () => void = () => {};
   onAdmin: () => void = () => {};
   station = 'hand';
@@ -34,7 +34,9 @@ export class Hud {
     this.root.id = 'hud';
     this.root.innerHTML = `
       <div class="cross"></div>
-      <div class="topleft"><div class="coords"></div><div class="biome"></div><div class="coopinfo"></div></div>
+      <div class="topleft"><div class="coords"></div><div class="biome"></div><div class="coopinfo"></div><div class="goal"></div></div>
+      <div class="bossbar" hidden><b></b><i><u></u></i></div>
+      <div class="starcompass" hidden><span class="needle">➤</span><small></small></div>
       <div class="bars"></div>
       <div class="hotbar"></div>
       <div class="toasts"></div>
@@ -46,7 +48,7 @@ export class Hud {
       <div class="panel" hidden></div>
       <div class="cursor-item" hidden></div>
       ${game.input.touch ? `<div class="touchbtns">
-        <button data-act="rotate" class="b-rot">⟳</button><button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="menu">☰</button>
+        <button data-act="rotate" class="b-rot">⟳</button><button data-act="inventory">🎒<small>${t('touch.inv')}</small></button><button data-act="map">🗺<small>${t('touch.map')}</small></button><button data-act="journal">📜</button><button data-act="menu">☰</button>
       </div>
       <div class="touchact"><button class="b-hit" data-hold="primary">⛏<small>${t('touch.break')}</small></button><button class="b-use" data-act="use">✋<small>${t('touch.use')}</small></button><button class="b-jump" data-hold="jump">⤒<small>${t('touch.jump')}</small></button><button class="b-run" data-toggle="sprint">🏃<small>${t('touch.sprint')}</small></button><button class="b-eat" data-act="eat">🍖</button></div>` : ''}`;
     document.body.appendChild(this.root);
@@ -77,6 +79,17 @@ export class Hud {
     $('.loading', this.root).style.display = g.ready ? 'none' : 'flex';
     $('.coords', this.root).textContent = t('hud.coords', { x: Math.floor(p.pos.x), y: Math.floor(p.pos.y), z: Math.floor(p.pos.z) }) + '   ' + t('hud.day', { n: g.day }) + ' ' + this.clock();
     $('.biome', this.root).textContent = nm(BIOMES[g.biome]);
+    // the story: what to do next, the compass, the Colossus
+    this.goalT -= 1; if (this.goalT <= 0) { this.goalT = 30; const pr = g.questProgress(); $('.goal', this.root).textContent = pr.step === 'done' ? '' : '🎯 ' + t(('quest.goal.' + pr.step) as any, { n: pr.stones.length }); }
+    const cp = $('.starcompass', this.root); cp.hidden = !g.compass;
+    if (g.compass) {
+      const a = Math.atan2(g.compass.x - p.pos.x, g.compass.z - p.pos.z), rel = a - (p.yaw + Math.PI);
+      ($('.needle', cp) as HTMLElement).style.transform = `rotate(${(-rel * 180 / Math.PI) - 90}deg)`;
+      $('small', cp).textContent = `${g.compass.label} · ${Math.round(g.compass.dist)} m`;
+    }
+    const boss = g.animals.bossAlive(), bb = $('.bossbar', this.root);
+    bb.hidden = !boss || boss.pos.distanceTo(p.pos) > 70;
+    if (boss && !bb.hidden) { $('b', bb).textContent = nm(boss.def); ($('u', bb) as HTMLElement).style.width = `${Math.max(0, boss.hp / boss.def.hp) * 100}%`; }
     const s = p.stats;
     const sig = [s.health, s.hunger, s.thirst, s.stamina, s.temp * 10, s.sick * 100, p.air * 10].map(v => Math.round(v)).join();
     if (sig !== this.lastBars) { this.lastBars = sig; this.renderBars(); }
@@ -101,6 +114,34 @@ export class Hud {
     sb.hidden = !st; if (st && sb.textContent !== st) sb.textContent = st;
     const c = $('.cross', this.root); c.classList.toggle('busy', !!g.breaking);
     c.style.setProperty('--p', String(Math.min(1, g.breaking?.p ?? 0)));
+  }
+  private goalT = 0;
+  /** the journal: the story so far and what's next */
+  openJournal() {
+    this.open = 'journal'; this.game.paused = true; this.root.classList.add('panel-open');
+    const panel = $('.panel', this.root); panel.hidden = false;
+    const g = this.game, pr = g.questProgress(), q = g.data.quest!;
+    const steps: [string, boolean, string][] = [
+      ['compass', pr.done.compass, ''], ['stones', pr.done.stones, ` (${pr.stones.length}/4)`], ['beacon', pr.done.beacon, ''],
+      ['sky', pr.done.sky, ''], ['bells', pr.done.bells, ` (${q.bells.length}/4)`], ['colossus', pr.done.colossus, ''], ['plant', pr.done.plant, ''],
+    ];
+    panel.innerHTML = `<div class="journal"><button class="close">✕</button><h2>📜 ${t('quest.title')}</h2><p class="muted">${t('quest.intro')}</p>
+      <ol>${steps.map(([k, done, extra], i) => `<li class="${done ? 'done' : pr.step === k ? 'now' : ''}"><b>${done ? '✔' : pr.step === k ? '➤' : (i + 1) + '.'} ${t(('quest.step.' + k) as any)}${extra}</b><p>${t(('quest.hint.' + k) as any)}</p></li>`).join('')}</ol>
+      <div class="stones">${['starstone_ember', 'starstone_frost', 'starstone_verdant', 'starstone_tide'].map(k => `<span class="${pr.stones.includes(k) ? 'have' : ''}" title="${esc(nm(ITEM[k]))}"><img src="${itemIcon(k)}" alt="">${esc(nm(ITEM[k]))}</span>`).join('')}</div>
+      <p class="muted">${t('quest.stats', { days: g.day, kills: q.kills, deaths: q.deaths })}</p></div>`;
+    $('.close', panel).onclick = () => { this.close(); g.input.requestLock(); };
+  }
+  /** the end of the story */
+  showEnding() {
+    const g = this.game, q = g.data.quest!;
+    this.open = 'ending'; g.paused = true; this.root.classList.add('panel-open');
+    const panel = $('.panel', this.root); panel.hidden = false;
+    const lines = [t('ending.l1'), t('ending.l2'), t('ending.l3'), t('ending.l4')];
+    panel.innerHTML = `<div class="ending"><h1>${t('ending.title')}</h1>${lines.map((l, i) => `<p style="animation-delay:${0.8 + i * 1.6}s">${esc(l)}</p>`).join('')}
+      <div class="estats" style="animation-delay:${0.8 + lines.length * 1.6}s">${t('quest.stats', { days: g.day, kills: q.kills, deaths: q.deaths })}</div>
+      <button class="btn big" style="animation-delay:${1.2 + lines.length * 1.6}s">${t('ending.continue')}</button></div>`;
+    sound.play('discover'); setTimeout(() => sound.play('bell', { vol: 0.6 }), 1500);
+    panel.querySelector<HTMLElement>('button')!.onclick = () => { this.close(); g.input.requestLock(); };
   }
   private clock() { const f = (this.game.time % 1200) / 1200 * 24; const h = Math.floor(f), m = Math.floor((f - h) * 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; }
 

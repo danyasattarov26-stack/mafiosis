@@ -10,6 +10,7 @@ import { DAY, type Game } from '../game/game';
 import type { Session } from '../net/session';
 import { sound } from '../audio/audio';
 import { localMods, saveLocalMod, removeLocalMod } from '../mods/mods';
+import { BUILDERS } from '../world/structures';
 
 const CATS: [string, (k: string) => boolean][] = [
   ['all', () => true], ['block', k => ITEM[k].kind === 'block'], ['tool', k => ITEM[k].kind === 'tool' || ITEM[k].kind === 'weapon' || !!ITEM[k].shield],
@@ -60,6 +61,12 @@ export class Admin {
             <div class="row"><div class="seg">${[1, 16, 64].map(n => `<button data-amt="${n}" class="${this.amount === n ? 'on' : ''}">${n}</button>`).join('')}</div><input class="aamt" type="number" min="1" max="999" value="${this.amount}"></div>
             <div class="row"><span>${t('admin.to')}</span><select class="ato"><option value="me">${t('admin.self')}</option>${peers.map(([id, name]) => `<option value="${id}" ${this.to === id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><button class="btn big" data-give>${t('admin.give')}</button></div>
           </div>
+          <h4>${t('admin.teleport')}</h4>
+          <div class="row"><input class="tpx" type="number" placeholder="X" value="${Math.round(g.player.pos.x)}"><input class="tpz" type="number" placeholder="Z" value="${Math.round(g.player.pos.z)}"><button class="btn" data-tpgo>${t('admin.go')}</button></div>
+          <div class="row">${g.bed ? `<button class="btn small" data-tpbed>🛏 ${t('admin.toBed')}</button>` : ''}${g.data.quest?.beacon ? `<button class="btn small" data-tpbeacon>✨ ${t('admin.toBeacon')}</button>` : ''}${g.waypoints.map((w, i) => `<button class="btn small" data-tpwp="${i}">📍 ${esc(w.label)}</button>`).join('')}
+            <button class="btn small" data-dim>${g.dim === 'earth' ? '☁ ' + t('admin.toSky') : '🌍 ' + t('admin.toEarth')}</button></div>
+          <h4>${t('admin.structures')}</h4>
+          <div class="row"><select class="astruct">${Object.keys(BUILDERS).sort().map(k => `<option value="${k}">${esc(t(('struct.' + k) as any))}</option>`).join('')}</select><button class="btn" data-struct>${t('admin.build')}</button></div>
           <h4>${t('admin.time')}</h4><div class="seg">${[['morning', 0.3], ['noon', 0.5], ['evening', 0.76], ['night', 0.0]].map(([k, f]) => `<button data-time="${f}">${t(('admin.' + k) as any)}</button>`).join('')}</div>
           <h4>${t('admin.weather')}</h4><div class="seg">${['clear', 'rain', 'storm'].map(w => `<button data-weather="${w}" class="${g.weather === w ? 'on' : ''}">${t(('admin.' + w) as any)}</button>`).join('')}</div>
           <h4>${t('admin.tools')}</h4>
@@ -86,6 +93,18 @@ export class Admin {
     on('heal', () => { Object.assign(g.player.stats, { health: 100, hunger: 100, thirst: 100, stamina: 100, temp: 37, sick: 0 }); g.onChange(); });
     on('clearanimals', () => g.animals.clear());
     q<HTMLInputElement>('.agod').onchange = e => { g.player.god = (e.target as HTMLInputElement).checked; };
+    // getting around and building
+    const tp = (x: number, z: number) => {
+      const y = g.world.surface(Math.floor(x), Math.floor(z));
+      g.player.pos.set(x + 0.5, Math.max(y + 1.5, 4) + (g.world.chunkAt(x, z) ? 0 : 30), z + 0.5); g.player.vel.set(0, 0, 0); g.slowFall = 6; g.ready = false;
+      this.close();
+    };
+    q('[data-tpgo]').onclick = () => { const x = +q<HTMLInputElement>('.tpx').value, z = +q<HTMLInputElement>('.tpz').value; if (isFinite(x) && isFinite(z)) tp(Math.round(x), Math.round(z)); };
+    const tb = this.root.querySelector<HTMLElement>('[data-tpbed]'); if (tb && g.bed) tb.onclick = () => tp(g.bed![0], g.bed![2] + 1);
+    const tbc = this.root.querySelector<HTMLElement>('[data-tpbeacon]'); if (tbc) tbc.onclick = () => { const b = g.data.quest!.beacon!; tp(b[0] + 2, b[2]); };
+    on('tpwp', i => { const w = g.waypoints[+i]; if (w) tp(w.x, w.z); });
+    q('[data-dim]').onclick = () => { this.close(); g.travel(); };
+    q('[data-struct]').onclick = () => { const k = q<HTMLSelectElement>('.astruct').value; if (g.spawnStructure(k)) { g.toast(t('admin.built', { name: t(('struct.' + k) as any) }), 'good'); this.close(); } };
     // the item picker: search, categories, pick an icon, choose how many
     const aq = q<HTMLInputElement>('.aq');
     aq.oninput = () => { this.q = aq.value; const pos = aq.selectionStart; this.render(); const a2 = q<HTMLInputElement>('.aq'); a2.focus(); a2.setSelectionRange(pos, pos); };

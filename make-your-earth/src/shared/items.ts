@@ -30,7 +30,7 @@ export const ITEMS: ItemDef[] = [];
 const add = (d: ItemDef) => { ITEMS.push(d); return d; };
 
 // ---- every block that can be held ----
-const NOT_ITEMS = new Set(['air', 'water', 'lava', 'fire', 'grave', 'bedrock', 'wooden_door_open', 'wheat_crop_0', 'wheat_crop_1', 'wheat_crop_2', 'carrot_crop_0', 'carrot_crop_1', 'carrot_crop_2', 'potato_crop_0', 'potato_crop_1', 'potato_crop_2']);
+const NOT_ITEMS = new Set(['air', 'water', 'lava', 'fire', 'grave', 'bedrock', 'ancient_vault', 'sky_altar', 'sky_bell', 'sky_bell_rung', 'wooden_door_open', 'wheat_crop_0', 'wheat_crop_1', 'wheat_crop_2', 'carrot_crop_0', 'carrot_crop_1', 'carrot_crop_2', 'potato_crop_0', 'potato_crop_1', 'potato_crop_2']);
 BLOCKS.forEach((b, id) => {
   if (NOT_ITEMS.has(b.key)) return;
   const tags: string[] = [];
@@ -190,6 +190,12 @@ for (const d of DYES) add({ key: `${d.k}_dye`, en: `${d.en} Dye`, pt: `Corante $
   { key: 'wooden_shield', en: 'Wooden Shield', pt: 'Escudo de Madeira', kind: 'misc', color: '#a8834f', color2: '#5e3f22', icon: 'shield', stack: 1, shield: { block: 0.55, durability: 120 } },
   { key: 'iron_shield', en: 'Iron Shield', pt: 'Escudo de Ferro', kind: 'misc', color: '#9aa3ad', color2: '#4a4d52', icon: 'shield', stack: 1, shield: { block: 0.8, durability: 400 }, era: 2 },
   { key: 'shears', en: 'Shears', pt: 'Tesoura de Tosquia', kind: 'tool', color: '#cfd3d8', color2: '#6b4a2b', icon: 'shears', stack: 1 },
+  { key: 'star_compass', en: 'Star Compass', pt: 'Bússola Estelar', kind: 'misc', color: '#f5d04a', color2: '#b07af0', icon: 'compass', stack: 1 },
+  { key: 'starstone_ember', en: 'Ember Starstone', pt: 'Pedra Estelar de Brasa', kind: 'misc', color: '#ff6a1a', icon: 'gem', stack: 1, tags: ['starstone'] },
+  { key: 'starstone_frost', en: 'Frost Starstone', pt: 'Pedra Estelar de Gelo', kind: 'misc', color: '#8ad8ff', icon: 'gem', stack: 1, tags: ['starstone'] },
+  { key: 'starstone_verdant', en: 'Verdant Starstone', pt: 'Pedra Estelar Verdejante', kind: 'misc', color: '#4ad86a', icon: 'gem', stack: 1, tags: ['starstone'] },
+  { key: 'starstone_tide', en: 'Tide Starstone', pt: 'Pedra Estelar das Marés', kind: 'misc', color: '#3a6ad8', icon: 'gem', stack: 1, tags: ['starstone'] },
+  { key: 'world_seed', en: 'World Seed', pt: 'Semente do Mundo', kind: 'misc', color: '#f5d04a', color2: '#4ad86a', icon: 'fruit', stack: 1 },
   { key: 'mammoth_trophy', en: 'Mammoth Trophy', pt: 'Troféu de Mamute', kind: 'misc', color: '#f2ead6', icon: 'bone', stack: 1 },
 ].forEach(d => add(d as ItemDef));
 
@@ -274,3 +280,8 @@ R('mushroom_soup', 1, { mushroom: 3, clean_water: 1 }, 'campfire'); R('carrot_so
 R('pumpkin_pie', 1, { pumpkin: 1, flour: 1 }, 'campfire'); R('apple_pie', 1, { apple: 3, flour: 1 }, 'campfire'); R('golden_apple', 1, { apple: 1, gold_nugget: 8 }, 'workbench');
 R('seeds', 4, { pumpkin: 1 }); R('designer_table', 1, { workbench: 1, red_dye: 1, blue_dye: 1, yellow_dye: 1, paper: 2 }, 'workbench');
 R('terracotta_orange', 4, { terracotta: 4, orange_dye: 1 }, 'workbench'); R('terracotta_yellow', 4, { terracotta: 4, yellow_dye: 1 }, 'workbench'); R('terracotta_brown', 4, { terracotta: 4, black_dye: 1, red_dye: 1 }, 'workbench'); R('string', 2, { cobweb: 1 }); R('leather', 1, { rotten_flesh: 4, salt: 1 }, 'workbench');
+
+// ---- the quest ----
+R('star_compass', 1, { compass: 1, crystal_shard: 2 }, 'workbench'); R('star_compass', 1, { iron_ingot: 2, crystal_shard: 3 }, 'workbench');
+R('sky_beacon', 1, { starstone_ember: 1, starstone_frost: 1, starstone_verdant: 1, starstone_tide: 1, gold_block: 1, glow_crystal: 2 }, 'anvil');
+R('skystone_bricks', 4, { skystone: 4 }, 'workbench'); R('oak_planks', 4, { skywood_log: 1 });

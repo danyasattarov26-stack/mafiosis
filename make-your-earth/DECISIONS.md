@@ -42,3 +42,8 @@
 26. **Mod blocks become the world's custom blocks**, so their numbers are saved with the world and shared in co-op the same way as Block Maker blocks. Mod items and recipes are added at page load; items from a mod that's switched off are set aside in the inventory, not deleted.
 27. **Painted blocks with any see-through pixel count as transparent**, so the blocks next to them are still drawn.
 28. **New biomes come from a "rare" noise inside the common ones**: canyons inside deserts and savannas, volcanic fields in some mountains, swamps in low wet ground, taiga in the cold edge of forests, autumn forests in patches of forest. New characters never start in volcanic fields.
+29. **The goal is a journey, not a portal.** You light a Beacon you built from four Starstones and ride its column of light up into the sky. The second world is reached by going up, and coming home is drifting back down.
+30. **The Sky Isles are a separate world in the same save** (their own changes, chests and crops). In co-op the host takes everyone across together, so everyone is always in the same world. If you die there, you're reborn at the Sky Altar.
+31. **The Colossus never leaves its arena and can't be knocked back.** It has three phases (slams, then crystal shard volleys, then wisps), and every phase can be answered: back off or jump, raise a shield, fight the wisps.
+32. **Recoloured animals are recoloured properly.** The animal models use vertex colours, so a new coat colour is painted per vertex while darker details (eyes, noses, hooves) stay darker. That's how a white polar bear comes from the brown bear.
+33. **Health bars respect walls** (they're depth-tested now).

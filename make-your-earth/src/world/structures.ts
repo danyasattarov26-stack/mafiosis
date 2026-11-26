@@ -117,7 +117,7 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     const s = new S(11, 11, 10, B.mossy_cobble).clear();
     for (let k = 0; k < 4; k++) s.box(k, k * 2, k, 10 - k, k * 2 + 1, 10 - k, k % 2 ? B.mossy_bricks : B.mossy_cobble);
     s.box(2, 1, 2, 8, 4, 8, 0); s.box(5, 1, 0, 5, 2, 2, 0);
-    s.set(3, 1, 7, B.loot_chest); s.set(7, 1, 7, B.loot_chest); s.set(5, 1, 5, B.gold_block); s.set(3, 3, 3, B.torch); s.set(7, 3, 3, B.torch);
+    s.set(3, 1, 7, B.loot_chest); s.set(7, 1, 7, B.ancient_vault); s.set(5, 1, 5, B.gold_block); s.set(3, 3, 3, B.torch); s.set(7, 3, 3, B.torch);
     s.set(5, 8, 5, B.cracked_bricks);
     return s.done();
   },
@@ -128,7 +128,7 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
       if (d <= 4.3 && d > 3.2) s.set(x, y, z, B.snow_bricks);
       else if (d <= 3.2) s.set(x, y, z, 0);
     }
-    s.box(4, 0, 0, 4, 1, 1, 0); s.set(4, 0, 4, B.campfire); s.set(2, 0, 5, B.loot_chest); s.set(6, 0, 5, B.wool);
+    s.box(4, 0, 0, 4, 1, 1, 0); s.set(4, 0, 4, B.campfire); s.set(2, 0, 5, B.ancient_vault); s.set(6, 0, 5, B.wool);
     return s.done();
   },
   hunters_camp: () => {
@@ -157,7 +157,7 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
       for (let y = 1; y <= 2; y++) { s.set(2 - half, y, z, B.oak_planks); s.set(2 + half, y, z, z % 4 === 1 ? 0 : B.oak_planks); }
     }
     s.box(2, 1, 6, 2, 5, 6, B.oak_log); s.box(1, 5, 6, 3, 5, 6, B.wool);
-    s.set(2, 1, 9, B.loot_chest); s.set(1, 1, 3, B.loot_chest);
+    s.set(2, 1, 9, B.ancient_vault); s.set(1, 1, 3, B.loot_chest);
     return s.done();
   },
   swamp_shack: r => {
@@ -219,7 +219,7 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     s.box(0, 0, 0, 8, 0, 8, B.basalt); s.box(1, 1, 1, 7, 1, 7, B.obsidian); s.box(2, 1, 2, 6, 1, 6, 0);
     s.box(3, 0, 3, 5, 0, 5, B.magma_rock); s.set(4, 0, 4, B.lava);
     for (const [x, z] of [[1, 1], [7, 1], [1, 7], [7, 7]]) s.box(x, 1, z, x, 3, z, B.obsidian);
-    s.set(2, 1, 4, B.loot_chest); s.set(6, 1, 4, B.loot_chest);
+    s.set(2, 1, 4, B.loot_chest); s.set(6, 1, 4, B.ancient_vault);
     return s.done();
   },
   windmill: r => {
@@ -267,6 +267,8 @@ const KINDS: Record<number, { kind: string; w: number }[]> = {
   [BIOME_ID.canyon]: [{ kind: 'mine_shaft', w: 3 }, { kind: 'ruins', w: 1 }, { kind: 'desert_well', w: 1 }, { kind: 'camp', w: 1 }],
   [BIOME_ID.volcanic]: [{ kind: 'obsidian_altar', w: 3 }, { kind: 'ruins', w: 1 }],
 };
+/** which structures hold an ancient vault, and the Starstone inside */
+export const VAULTS: Record<string, string> = { obsidian_altar: 'starstone_ember', igloo: 'starstone_frost', temple: 'starstone_verdant', shipwreck: 'starstone_tide' };
 export const CELL = 144;              // one chance of a structure per 144×144 blocks
 const CHANCE = 0.55;
 

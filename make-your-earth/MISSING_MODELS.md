@@ -14,6 +14,8 @@ Searched Patch's library first (it has animated, CC BY 4.0 Polyfork animals and 
 | Giant spider, cave spider | Built in code (boxes and spheres, animated legs) | "spider rigged low poly animated" |
 | Zombie idle pose (its own idle holds the arms straight out) | The walk clip slowed right down | "zombie idle animation" |
 | Monster voices (zombie, skeleton, spider, cave beast) | Synthesised in code | "zombie groan", "bone rattle", "spider hiss" (CC0) |
+| Snake, bat, butterfly, glow jellyfish, sky wisp, Sky Colossus | Built in code | "snake rigged", "bat animated", "butterfly", "jellyfish", "stone golem rigged" |
+| Reindeer, moose, bison, black panther, snow leopard, llama | Deer, cow, lion and camel recoloured | "reindeer", "moose", "bison", "panther", "snow leopard", "llama" (animated) |
 | Dog | Wolf model, light tint | "dog rigged animated" |
 | First-person hands/arms | Simple box arm | "first person arms rigged" |
 | Bronze/iron/steel tool variants | Kenney tool tinted per material | "bronze axe", "iron pickaxe" |

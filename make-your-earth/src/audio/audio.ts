@@ -8,7 +8,7 @@ import { settings } from '../game/settings';
 const AMBIENT = ['birds', 'wind', 'ocean', 'night', 'rain', 'fire'] as const;
 type Amb = typeof AMBIENT[number];
 /** monster voices are made in code (no recordings) */
-const SYNTH_ONLY = new Set(['zombie', 'skeleton', 'spider', 'bandit', 'burn', 'beast']);
+const SYNTH_ONLY = new Set(['zombie', 'skeleton', 'spider', 'bandit', 'burn', 'beast', 'bell']);
 
 export class Sound {
   ctx: AudioContext | null = null;
@@ -86,6 +86,12 @@ export class Sound {
       // bones rattling: a burst of tiny woody clicks
       for (let i = 0; i < 9; i++) { const at = t + i * 0.045 + Math.random() * 0.02, o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.value = 900 + Math.random() * 900; g.gain.setValueAtTime(0.18, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.03); o.connect(g).connect(out); o.start(at); o.stop(at + 0.04); }
     } else if (name === 'spider') noise(0.45, 5200, 0.8);
+    else if (name === 'bell') {
+      // a big bronze bell: a few inharmonic partials ringing out
+      for (const [f, a, d] of [[220, 0.35, 4], [440 * 1.19, 0.18, 3], [660 * 1.5, 0.12, 2.2], [1320, 0.06, 1.4]] as const) {
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(0.001, t + d); o.connect(g).connect(out); o.start(t); o.stop(t + d);
+      }
+    }
     else if (name === 'burn') noise(0.5, 1800, 0.6);
     else if (name === 'bandit') tone(180, 140, 0.35, 'triangle');
     else noise(0.25, 600, 1);

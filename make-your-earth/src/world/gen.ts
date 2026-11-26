@@ -15,12 +15,17 @@ const CANYON_BANDS = [B.terracotta, B.terracotta_orange, B.terracotta_yellow, B.
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export interface Column { h: number; biome: number; river: number }
+export type Dim = 'earth' | 'sky';
+/** the Sky Isles: four bells on outer islands, the arena and its altar in the middle */
+export const SKY_BELLS: [number, number][] = [[118, 0], [-118, 0], [0, 118], [0, -118]];
+export const SKY_TOP = 104;                       // the arena floor
+export const SKY_ALTAR: [number, number, number] = [0, SKY_TOP + 1, 30];
 
 export class TerrainGen {
   private nc: Noise; private ne: Noise; private nm: Noise; private nr: Noise; private nt: Noise; private nh: Noise; private nriv: Noise; private ncave: Noise; private ncave2: Noise;
   private nw1: Noise; private nw2: Noise; private ncav: Noise; private nrav: Noise; private nravm: Noise; private nlake: Noise; private nrare: Noise; private nmesa: Noise;
   private B = BIOME_ID;
-  constructor(public seed: number) {
+  constructor(public seed: number, public dim: Dim = 'earth') {
     this.nc = new Noise(seed); this.ne = new Noise(seed + 1); this.nm = new Noise(seed + 2); this.nr = new Noise(seed + 3);
     this.nt = new Noise(seed + 4); this.nh = new Noise(seed + 5); this.nriv = new Noise(seed + 6); this.ncave = new Noise(seed + 7); this.ncave2 = new Noise(seed + 8);
     this.nw1 = new Noise(seed + 21); this.nw2 = new Noise(seed + 22); this.ncav = new Noise(seed + 23); this.nrav = new Noise(seed + 24); this.nravm = new Noise(seed + 25); this.nlake = new Noise(seed + 26); this.nrare = new Noise(seed + 27); this.nmesa = new Noise(seed + 28);
@@ -38,8 +43,73 @@ export class TerrainGen {
     return { floor: Math.round(floor + (1 - c) * (h - floor) * 0.9), c };
   }
 
+  // ---------------- the Sky Isles ----------------
+  /** island shape at a column: 0 = open sky; otherwise how solid (0..1) and where its top is */
+  private skyIsland(x: number, z: number) {
+    const d0 = Math.hypot(x, z);
+    let m = 0, top = SKY_TOP;
+    if (d0 < 40) { m = Math.max(m, 1 - (d0 / 40) ** 4); top = SKY_TOP; }                       // the arena
+    for (const [bx, bz] of SKY_BELLS) { const d = Math.hypot(x - bx, z - bz); if (d < 20) { const k = 1 - (d / 20) ** 2; if (k > m) { m = k; top = SKY_TOP + 6; } } }
+    // a bridge of small islands towards each bell
+    for (const [bx, bz] of SKY_BELLS) {
+      const len = Math.hypot(bx, bz), t = Math.max(0, Math.min(1, (x * bx + z * bz) / (len * len))), px = bx * t, pz = bz * t, d = Math.hypot(x - px, z - pz);
+      const blob = this.ncav.n3(px / 18, 0, pz / 18);
+      if (t > 0.3 && t < 0.85 && d < 5 + blob * 4) { const k = (1 - d / 9) * 0.8; if (k > m) { m = k; top = SKY_TOP + Math.round(t * 6 + blob * 3); } }
+    }
+    // wild islands everywhere else
+    const n = this.nc.fbm(x / 70, z / 70, 3) + this.ne.n2(x / 25, z / 25) * 0.25;
+    if (n > 0.32 && d0 > 46) { const k = Math.min(1, (n - 0.32) * 3); if (k > m) { m = k; top = 90 + Math.round(this.nm.fbm(x / 160, z / 160, 2) * 30 + k * 6); } }
+    return { m, top };
+  }
+  private skyGenerate(cx: number, cz: number) {
+    const d = new Uint8Array(CS * CS * CH), ox = cx * CS, oz = cz * CS, seed = this.seed;
+    for (let z = 0; z < CS; z++) for (let x = 0; x < CS; x++) {
+      const wx = ox + x, wz = oz + z, { m, top } = this.skyIsland(wx, wz);
+      // drifting clouds below the islands
+      const cl = this.nlake.n2(wx / 40, wz / 40);
+      if (cl > 0.45 && m < 0.05) for (let y = 74; y < 74 + Math.round((cl - 0.45) * 12); y++) d[idx(x, y, z)] = B.cloud;
+      if (m <= 0) continue;
+      const depth = Math.round(4 + m * 26 + this.nr.n2(wx / 9, wz / 9) * 5);
+      for (let y = top - depth; y <= top; y++) {
+        if (y < 1) continue;
+        let id = y === top ? B.sky_grass : B.skystone;
+        if (id === B.skystone && hash3(wx, y, wz, seed + 71) < 0.012) id = B.glow_crystal;
+        d[idx(x, y, z)] = id;
+      }
+      const r = hash2(wx, wz, seed + 72), dc = Math.hypot(wx, wz);
+      if (dc > 42 && r < 0.012) this.skyTree(d, x, top + 1, z, hash2(wx, wz, seed + 73));
+      else if (r > 0.96 && dc > 6) d[idx(x, top + 1, z)] = B.starlight_flower;
+      else if (r > 0.93 && dc > 6) d[idx(x, top + 1, z)] = B.tall_grass;
+    }
+    // the arena: a ring of bricks, the altar that takes you home
+    for (let z = 0; z < CS; z++) for (let x = 0; x < CS; x++) {
+      const wx = ox + x, wz = oz + z, dc = Math.hypot(wx, wz);
+      if (dc > 35 && dc < 36.5 && (Math.floor(Math.atan2(wz, wx) * 8) & 1)) for (let y = 1; y <= 3; y++) d[idx(x, SKY_TOP + y, z)] = B.skystone_bricks;
+      if (dc < 3.5) d[idx(x, SKY_TOP, z)] = B.skystone_bricks;
+      if (wx === SKY_ALTAR[0] && wz === SKY_ALTAR[2]) d[idx(x, SKY_ALTAR[1], z)] = B.sky_altar;
+      // the bells, each on a little shrine
+      for (const [bx, bz] of SKY_BELLS) {
+        const ty = SKY_TOP + 6, ax = Math.abs(wx - bx), az = Math.abs(wz - bz);
+        if (ax <= 2 && az <= 2) d[idx(x, ty + 1, z)] = B.skystone_bricks;
+        if ((ax === 2 && az === 2)) for (let y = 2; y <= 5; y++) d[idx(x, ty + y, z)] = B.skystone_bricks;
+        if (ax <= 2 && az <= 2) d[idx(x, ty + 6, z)] = B.skystone_bricks;
+        if (ax === 0 && az === 0) { d[idx(x, ty + 2, z)] = B.sky_bell; d[idx(x, ty + 5, z)] = B.lantern; }
+      }
+    }
+    return d;
+  }
+  private skyTree(d: Uint8Array, x: number, y: number, z: number, r: number) {
+    const hgt = 4 + Math.floor(r * 4);
+    const set = (dx: number, dy: number, dz: number, id: number) => { const X = x + dx, Y = y + dy, Z = z + dz; if (X < 0 || X >= CS || Z < 0 || Z >= CS || Y >= CH) return; const i = idx(X, Y, Z); if (!d[i] || id !== B.sky_leaves) d[i] = id; };
+    for (let dy = -2; dy <= 2; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dz * dz + dy * dy * 2 <= 10) set(dx, hgt + dy, dz, B.sky_leaves);
+    for (let i = 0; i < hgt; i++) set(0, i, 0, B.skywood_log);
+  }
+  /** where a bell stands */
+  bellPos(i: number): [number, number, number] { const [bx, bz] = SKY_BELLS[i]; return [bx, SKY_TOP + 8, bz]; }
+
   /** height and biome of one column (cheap, used for trees, the map and spawning) */
   column(x: number, z: number): Column {
+    if (this.dim === 'sky') { const s = this.skyIsland(x, z); return { h: s.m > 0 ? s.top : 0, biome: this.B.sky, river: 0 }; }
     const c = this.nc.fbm(x / 1400, z / 1400, 4) + 0.12;                 // continents: below −0.1 is sea
     const e = this.ne.fbm(x / 160, z / 160, 3);
     const mMask = smooth(0.18, 0.5, this.nm.fbm(x / 1700 + 40, z / 1700 - 20, 3));
@@ -86,6 +156,7 @@ export class TerrainGen {
   }
 
   generate(cx: number, cz: number): Uint8Array {
+    if (this.dim === 'sky') return this.skyGenerate(cx, cz);
     const d = new Uint8Array(CS * CS * CH);
     const ox = cx * CS, oz = cz * CS, seed = this.seed;
     const cols: Column[] = [];

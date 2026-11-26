@@ -30,6 +30,7 @@ export interface Beast {
   cur: string; mats: THREE.MeshStandardMaterial[]; flash: number; radius: number; height: number; soundT: number; remote?: boolean;
   model: string; kb: THREE.Vector3; hop: number; burning: number; animLock: number; shootT: number; provoked: boolean;
   owner: string | null; saddled: boolean; ridden: number; localRide?: boolean; glowing?: boolean;
+  procAnim?: (b: Beast, dt: number, moving: boolean) => void;
   legs?: THREE.Object3D[]; legPhase: number; bar?: THREE.Sprite; barHp: number; saddle?: THREE.Object3D;
 }
 export interface PetSave { key: string; x: number; y: number; z: number; owner: string; saddled: boolean; hp: number }
@@ -67,6 +68,89 @@ function buildSpider(tint?: string) {
   return { g, legs, mats: [body, hair] };
 }
 
+/** recolour a vertex-coloured model: the main coat becomes `hex`, darker details (eyes, nose, hooves) stay dark */
+const recolored = new Map<string, THREE.BufferGeometry>();
+function recolorGeometry(geo: THREE.BufferGeometry, hex: string, cacheKey: string) {
+  let g = recolored.get(cacheKey);
+  if (g) return g;
+  g = geo.clone();
+  const col = g.getAttribute('color') as THREE.BufferAttribute, C = new THREE.Color(hex), n = col.count;
+  const lum = new Float32Array(n); let mean = 0;
+  for (let i = 0; i < n; i++) { lum[i] = 0.3 * col.getX(i) + 0.59 * col.getY(i) + 0.11 * col.getZ(i); mean += lum[i]; }
+  mean /= Math.max(1, n);
+  const out = new Float32Array(n * col.itemSize);
+  for (let i = 0; i < n; i++) {
+    const k = Math.max(0.12, Math.min(1.08, 0.95 + (lum[i] - mean) * 1.6));
+    out[i * col.itemSize] = C.r * k; out[i * col.itemSize + 1] = C.g * k; out[i * col.itemSize + 2] = C.b * k; if (col.itemSize === 4) out[i * 4 + 3] = 1;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(out, col.itemSize));
+  recolored.set(cacheKey, g);
+  return g;
+}
+
+/** creatures made in code: a model plus a little animation that runs every frame */
+interface Proc { g: THREE.Group; mats: THREE.MeshStandardMaterial[]; legs?: THREE.Object3D[]; anim?: (b: Beast, dt: number, moving: boolean) => void }
+const std = (c: string, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
+const PROC: Record<string, (def: Animal) => Proc> = {
+  'proc:spider': def => { const sp = buildSpider(def.tint); return { g: sp.g, legs: sp.legs, mats: sp.mats as THREE.MeshStandardMaterial[] }; },
+  'proc:snake': () => {
+    const g = new THREE.Group(), skin = std('#5a7a2a'), belly = std('#c8b860'), segs: THREE.Mesh[] = [];
+    for (let i = 0; i < 9; i++) { const r = 0.09 - Math.abs(i - 2) * 0.006; const m = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.04, r), 8, 6), i % 2 ? skin : belly); m.scale.set(1, 0.8, 1.6); m.position.set(0, 0.08, 0.3 - i * 0.14); g.add(m); segs.push(m); }
+    const eye = std('#ffd23a', { emissive: '#664400' }); for (const x of [-0.05, 0.05]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 4), eye); e.position.set(x, 0.13, 0.36); g.add(e); }
+    return { g, mats: [skin, belly], anim: (b, dt, moving) => { (b as any).ph = ((b as any).ph ?? 0) + dt * (moving ? 9 : 2); segs.forEach((m, i) => { m.position.x = Math.sin((b as any).ph - i * 0.7) * (moving ? 0.09 : 0.03); }); } };
+  },
+  'proc:bat': () => {
+    const g = new THREE.Group(), fur = std('#3a2e2e'), wing = std('#4a3838', { side: THREE.DoubleSide });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), fur); body.scale.set(1, 1, 1.3); body.position.y = 0.2; g.add(body);
+    for (const x of [-0.045, 0.045]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 4), fur); ear.position.set(x, 0.32, 0.05); g.add(ear); }
+    const wings: THREE.Object3D[] = [];
+    for (const sgn of [-1, 1]) { const piv = new THREE.Group(); piv.position.set(sgn * 0.07, 0.22, 0); const w = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.18), wing); w.rotation.x = -Math.PI / 2; w.position.x = sgn * 0.16; piv.add(w); g.add(piv); wings.push(piv); }
+    return { g, mats: [fur, wing], anim: (b, dt) => { (b as any).ph = ((b as any).ph ?? Math.random() * 6) + dt * 22; wings.forEach((w, i) => { w.rotation.z = Math.sin((b as any).ph) * 0.9 * (i ? -1 : 1); }); } };
+  },
+  'proc:butterfly': () => {
+    const g = new THREE.Group(), cols = ['#f2a020', '#4a8af2', '#f24a8a', '#f2e24a', '#8af24a'], c = cols[Math.floor(Math.random() * cols.length)];
+    const wing = std(c, { side: THREE.DoubleSide, emissive: c, emissiveIntensity: 0.15 }), body = std('#2a2220');
+    const b0 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 5), body); b0.rotation.x = Math.PI / 2; b0.position.y = 0.15; g.add(b0);
+    const wings: THREE.Object3D[] = [];
+    for (const sgn of [-1, 1]) { const piv = new THREE.Group(); piv.position.y = 0.15; const w = new THREE.Mesh(new THREE.CircleGeometry(0.07, 8), wing); w.rotation.x = -Math.PI / 2; w.position.x = sgn * 0.07; w.scale.set(1, 1.3, 1); piv.add(w); g.add(piv); wings.push(piv); }
+    return { g, mats: [wing], anim: (b, dt) => { (b as any).ph = ((b as any).ph ?? Math.random() * 6) + dt * 14; wings.forEach((w, i) => { w.rotation.z = (0.3 + Math.sin((b as any).ph) * 0.9) * (i ? -1 : 1); }); } };
+  },
+  'proc:jellyfish': () => {
+    const g = new THREE.Group(), jelly = std('#c08aff', { transparent: true, opacity: 0.7, emissive: '#8a4ad8', emissiveIntensity: 0.6 });
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), jelly); bell.position.y = 0.6; g.add(bell);
+    const tent: THREE.Mesh[] = [];
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2, t = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.006, 0.6, 4), jelly); t.position.set(Math.cos(a) * 0.18, 0.3, Math.sin(a) * 0.18); g.add(t); tent.push(t); }
+    return { g, mats: [jelly], anim: (b, dt) => { (b as any).ph = ((b as any).ph ?? Math.random() * 6) + dt * 2.5; const k = Math.sin((b as any).ph); bell.scale.set(1 + k * 0.12, 1 - k * 0.12, 1 + k * 0.12); tent.forEach((t, i) => { t.rotation.x = Math.sin((b as any).ph + i) * 0.25; }); } };
+  },
+  'proc:wisp': () => {
+    const g = new THREE.Group(), core = std('#d8f4ff', { emissive: '#8ad8ff', emissiveIntensity: 2 }), halo = std('#8ad8ff', { transparent: true, opacity: 0.35, emissive: '#4aa8ff', emissiveIntensity: 1 });
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), core); c.position.y = 0.6; g.add(c);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), halo); h.position.y = 0.6; g.add(h);
+    return { g, mats: [core, halo], anim: (b, dt) => { (b as any).ph = ((b as any).ph ?? Math.random() * 6) + dt * 4; h.scale.setScalar(1 + Math.sin((b as any).ph) * 0.2); c.position.y = h.position.y = 0.6 + Math.sin((b as any).ph * 0.7) * 0.1; } };
+  },
+  'proc:colossus': () => {
+    // the guardian of the Sky Isles: a giant of stone and crystal, about 7 m tall
+    const g = new THREE.Group(), rock = std('#6a6478', { roughness: 0.9 }), dark = std('#3e3a48'), crystal = std('#b07af0', { emissive: '#8a4ad8', emissiveIntensity: 1.2 });
+    const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); parent.add(o); return o; };
+    const hips = new THREE.Group(); hips.position.y = 2.6; g.add(hips);
+    const legs: THREE.Object3D[] = [];
+    for (const x of [-0.8, 0.8]) { const leg = new THREE.Group(); leg.position.set(x, 2.6, 0); box(0.9, 2.6, 1, dark, 0, -1.3, 0, leg); box(1.1, 0.4, 1.4, rock, 0, -2.45, 0.15, leg); g.add(leg); legs.push(leg); }
+    box(2.8, 2.4, 1.8, rock, 0, 1.4, 0, hips); box(1.2, 1, 0.2, crystal, 0, 1.6, 0.92, hips);
+    box(1.3, 1.1, 1.2, rock, 0, 3.2, 0.1, hips);
+    for (const x of [-0.3, 0.3]) box(0.22, 0.16, 0.05, crystal, x, 3.3, 0.72, hips);
+    const arms: THREE.Object3D[] = [];
+    for (const x of [-1.8, 1.8]) { const arm = new THREE.Group(); arm.position.set(x, 2.3, 0); box(0.8, 2.6, 0.9, dark, 0, -1.2, 0, arm); box(1.1, 0.9, 1.1, rock, 0, -2.7, 0, arm); box(0.3, 0.6, 0.3, crystal, 0, 0.3, 0, arm); hips.add(arm); arms.push(arm); }
+    for (const [x, z] of [[-1, -0.6], [0.9, -0.7], [0, -0.9]]) { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.2, 5), crystal); sp.position.set(x, 2.8, z); sp.rotation.x = -0.4; hips.add(sp); }
+    return { g, mats: [rock, dark, crystal], anim: (b, dt, moving) => {
+      (b as any).ph = ((b as any).ph ?? 0) + dt * (moving ? 3 : 0.8);
+      const k = Math.sin((b as any).ph), slam = Math.max(0, b.animLock) / 0.9;
+      legs[0].rotation.x = moving ? k * 0.4 : 0; legs[1].rotation.x = moving ? -k * 0.4 : 0;
+      arms[0].rotation.x = slam > 0 ? -2.4 * Math.sin(slam * Math.PI) : -k * 0.25; arms[1].rotation.x = slam > 0 ? -2.4 * Math.sin(slam * Math.PI) : k * 0.25;
+      hips.position.y = 2.6 + Math.abs(k) * 0.08;
+    } };
+  },
+};
+
 /** a bow or a sword in a hand bone */
 function buildWeapon(kind: 'bow' | 'sword' | 'club') {
   const g = new THREE.Group();
@@ -90,13 +174,15 @@ export class Animals {
   monsterCap = 12;
   host = true;                // false in co-op as a guest: positions come from the host
   sun = 1;                    // daylight 0..1 (set by the game each frame)
-  onAttack: (b: Beast, dmg: number, target: THREE.Vector3) => void = () => {};
+  onAttack: (b: Beast, dmg: number, target: THREE.Vector3, area?: boolean) => void = () => {};
+  dim: 'earth' | 'sky' = 'earth';
+  setWorld(w: World, dim: 'earth' | 'sky') { this.world = w; this.dim = dim; }
   onShoot: (b: Beast, from: THREE.Vector3, at: THREE.Vector3) => void = () => {};
   onSound: (key: string, pos: THREE.Vector3) => void = () => {};
-  onFx: (kind: 'fire' | 'hearts' | 'smoke', pos: THREE.Vector3) => void = () => {};
+  onFx: (kind: 'fire' | 'hearts' | 'smoke' | 'slam', pos: THREE.Vector3) => void = () => {};
   onPetKill: (drops: [string, number][], at: THREE.Vector3) => void = () => {};
   ownerPos: (owner: string) => THREE.Vector3 | null = () => null;
-  constructor(private world: World) {}
+  constructor(public world: World) {}
 
   groundY(x: number, z: number, fromY: number) {
     const fx = Math.floor(x), fz = Math.floor(z);
@@ -115,8 +201,9 @@ export class Animals {
     let mats: THREE.MeshStandardMaterial[] = [], mixer: THREE.AnimationMixer | null = null, legs: THREE.Object3D[] | undefined;
     const actions: Record<string, THREE.AnimationAction> = {};
     let model: THREE.Object3D;
-    if (mname === 'proc:spider') {
-      const sp = buildSpider(def.tint); model = sp.g; legs = sp.legs; mats = sp.mats as THREE.MeshStandardMaterial[];
+    let procAnim: Proc['anim'];
+    if (PROC[mname]) {
+      const sp = PROC[mname](def); model = sp.g; legs = sp.legs; mats = sp.mats; procAnim = sp.anim;
       model.scale.setScalar(def.scale);
     } else {
       const gltf = await loadModel(mname); if (!gltf) return null;
@@ -126,7 +213,9 @@ export class Animals {
         if (!o.isMesh) return;
         o.castShadow = false; o.frustumCulled = false;
         const m = (o.material as THREE.MeshStandardMaterial).clone();
-        if (def.tint) m.color.multiply(new THREE.Color(def.tint)).multiplyScalar(1.6);
+        // vertex-coloured animals get properly recoloured (a white polar bear, not a pale brown one)
+        if (def.tint && o.geometry.getAttribute('color')) o.geometry = recolorGeometry(o.geometry, def.tint, `${def.key}:${o.name}:${o.geometry.uuid}`);
+        else if (def.tint) m.color.multiply(new THREE.Color(def.tint)).multiplyScalar(1.6);
         o.material = m; mats.push(m);
       });
       mixer = gltf.animations.length ? new THREE.AnimationMixer(model) : null;
@@ -153,7 +242,7 @@ export class Animals {
       state: 'idle', timer: Math.random() * 3, target: new THREE.Vector3(x, y, z), attackT: 0, deadT: 0, cur: '', mats, flash: 0,
       radius: Math.max(size.x, size.z) * 0.5, height: size.y, soundT: 4 + Math.random() * 20,
       model: mname, kb: new THREE.Vector3(), hop: 0, burning: 0, animLock: 0, shootT: 1 + Math.random() * 2, provoked: false,
-      owner: null, saddled: false, ridden: 0, legs, legPhase: Math.random() * 6, barHp: -1,
+      owner: null, saddled: false, ridden: 0, legs, legPhase: Math.random() * 6, barHp: -1, procAnim,
     };
     if (def.monster || def.bandit) this.ensureBar(b);
     this.play(b, 'idle');
@@ -179,7 +268,7 @@ export class Animals {
     if (b.bar) return;
     const c = document.createElement('canvas'); c.width = 64; c.height = 10;
     const tex = new THREE.CanvasTexture(c); tex.magFilter = THREE.NearestFilter;
-    b.bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    b.bar = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true }));
     b.bar.scale.set(0.9, 0.14, 1); b.bar.renderOrder = 5; b.bar.visible = false;
     b.obj.add(b.bar);
   }
@@ -222,7 +311,8 @@ export class Animals {
       const y = water ? Math.min(SEA - 1, this.world.surface(Math.floor(hx), Math.floor(hz)) + 1 + Math.random() * Math.max(0, SEA - sy - 3)) : this.groundY(hx, hz, sy + 1);
       if (y == null) continue;
       if (!water && this.world.get(Math.floor(hx), Math.floor(y), Math.floor(hz)) === B.water) continue;
-      this.spawn(key, hx, y, hz);
+      if (def.day && this.sun < 0.4) continue;                       // butterflies only by day
+      this.spawn(key, hx, y + (def.fly ? 1 + Math.random() * 2 : 0), hz);
     }
   }
   private pick(table: [string, number][]) { let r = Math.random() * table.reduce((a, t) => a + t[1], 0); for (const [k, w] of table) { r -= w; if (r <= 0) return k; } return table[0][0]; }
@@ -232,6 +322,14 @@ export class Animals {
   private trySpawnMonster(P: THREE.Vector3) {
     const monsters = this.loading + this.list.filter(b => b.def.monster && b.state !== 'dead').length;
     if (monsters >= this.monsterCap) return;
+    if (this.dim === 'sky') {
+      // the Sky Isles: only wisps, drifting over the islands
+      if (monsters >= 5) return;
+      const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 18;
+      const x = Math.floor(P.x + Math.cos(a) * r), z = Math.floor(P.z + Math.sin(a) * r), sy = this.world.surface(x, z);
+      if (sy > 60 && this.world.get(x, sy + 2, z) === 0) this.spawnM('wisp', x + 0.5, sy + 2, z + 0.5);
+      return;
+    }
     const night = this.sun < 0.3;
     const underground = this.world.surface(Math.floor(P.x), Math.floor(P.z)) > P.y + 5;
     const cave = underground || Math.random() < 0.5;
@@ -245,7 +343,7 @@ export class Animals {
         for (let y = Math.floor(P.y) + 8; y > Math.floor(P.y) - 14 && y > 4; y--) {
           if (y > top - 5 || !this.spotFree(x, y, z)) continue;
           if (this.litNear(x, y, z)) return;
-          const key = this.pick([['zombie', 25], ['skeleton', 25], ['skeleton_archer', 12], ['cave_spider', 18], ['giant_spider', 10], ['cave_beast', 7]]);
+          const key = this.pick([['zombie', 25], ['skeleton', 25], ['skeleton_archer', 12], ['cave_spider', 18], ['giant_spider', 10], ['cave_beast', 7], ['bat', 16]]);
           this.spawnM(key, x + 0.5, y, z + 0.5);
           if (key === 'cave_spider' && Math.random() < 0.6) this.spawnM(key, x + 1.2, y, z + 0.3);
           return;
@@ -308,6 +406,7 @@ export class Animals {
       }
       if (d < this.simDist && (b.state !== 'dead' || b.actions.death)) b.mixer?.update(dt);
       if (b.legs) this.animateLegs(b, dt);
+      if (b.procAnim && d < this.simDist) b.procAnim(b, dt, b.state === 'walk' || b.state === 'chase' || b.state === 'flee');
       if (b.bar) {
         b.bar.visible = b.state !== 'dead' && d < 24 && (b.hp < b.def.hp || (!!b.def.monster && d < 14));
         if (b.bar.visible && b.barHp !== b.hp) this.drawBar(b);
@@ -341,6 +440,7 @@ export class Animals {
   private think(b: Beast, dt: number, P: THREE.Vector3, d: number, playerDown: boolean, others: THREE.Vector3[]) {
     const def = b.def;
     if (b.state === 'dead') { b.deadT -= dt; if (b.deadT <= 0) this.remove(b); return; }
+    if (def.boss) { this.bossThink(b, dt, P, others); return; }
     b.timer -= dt; b.attackT -= dt; b.soundT -= dt; b.animLock -= dt; b.shootT -= dt;
     if (b.soundT <= 0) { b.soundT = (def.monster ? 5 : 8) + Math.random() * 20; if (def.sound && d < 40) this.onSound(def.sound, b.pos); }
     // knocked back by a hit
@@ -378,6 +478,7 @@ export class Animals {
     if (b.state === 'idle' && b.timer <= 0) {
       b.state = 'walk'; b.timer = 3 + Math.random() * 6;
       b.target.set(b.pos.x + (Math.random() - 0.5) * 16, b.pos.y, b.pos.z + (Math.random() - 0.5) * 16);
+      if (def.fly) { const gy = this.groundY(b.target.x, b.target.z, b.pos.y + 3) ?? b.pos.y - 2; b.target.y = gy + 1 + Math.random() * (def.cave ? 2 : 5); if (def.fly) b.timer = 1.5 + Math.random() * 3; }
     } else if (b.state === 'walk' && (b.timer <= 0 || b.pos.distanceTo(b.target) < 0.8)) { b.state = 'idle'; b.timer = 2 + Math.random() * 6; }
     if (b.state === 'chase' || b.state === 'attack') b.target.copy(tgt);
     // archers: hold their ground, back off if you get close, and loose arrows
@@ -401,12 +502,58 @@ export class Animals {
     if (!speed) return;
     this.walkTo(b, b.target, speed, dt);
   }
+  /**
+    The Sky Colossus. It walks you down and slams the ground (jump or back off), and as it weakens it
+    hurls crystal shards (a shield helps) and then calls wisps to help. It never leaves its arena.
+  */
+  private bossThink(b: Beast, dt: number, P: THREE.Vector3, others: THREE.Vector3[]) {
+    const def = b.def, f = b.hp / def.hp;
+    b.attackT -= dt; b.shootT -= dt; b.animLock -= dt; b.timer -= dt; b.soundT -= dt;
+    let tgt = P, td = b.pos.distanceTo(P);
+    for (const o of others) { const od = b.pos.distanceTo(o); if (od < td) { td = od; tgt = o; } }
+    if (b.soundT <= 0) { b.soundT = 6 + Math.random() * 6; this.onSound('beast', b.pos); }
+    tmp.copy(tgt).sub(b.pos).setY(0); b.yaw = Math.atan2(tmp.x, tmp.z);
+    const slam = (b as any).slamAt as number | undefined;
+    if (slam !== undefined) {
+      (b as any).slamAt = slam - dt;
+      if (slam - dt <= 0) {
+        delete (b as any).slamAt;
+        this.onFx('slam', b.pos.clone());
+        for (const p of [P, ...others]) if (Math.hypot(p.x - b.pos.x, p.z - b.pos.z) < 6.5 && Math.abs(p.y - b.pos.y) < 1.6) this.onAttack(b, def.damage ?? 14, p, true);
+      }
+      return;
+    }
+    if (td < 6 && b.attackT <= 0) { b.attackT = f < 0.33 ? 2 : 2.8; b.animLock = 0.9; (b as any).slamAt = 0.55; this.play(b, 'idle'); return; }
+    if (f < 0.66 && b.shootT <= 0 && td < 45) {
+      b.shootT = f < 0.33 ? 3.2 : 5;
+      const from = b.pos.clone().setY(b.pos.y + 5.5), side = new THREE.Vector3(-(tgt.z - b.pos.z), 0, tgt.x - b.pos.x).normalize();
+      for (let k = -2; k <= 2; k++) this.onShoot(b, from, tgt.clone().setY(tgt.y + 1).addScaledVector(side, k * 1.6));
+    }
+    if (f < 0.33 && b.timer <= 0) {
+      b.timer = 14;
+      for (let k = 0; k < 2; k++) this.spawnM('wisp', b.pos.x + (Math.random() - 0.5) * 8, b.pos.y + 4, b.pos.z + (Math.random() - 0.5) * 8);
+    }
+    if (td > 4 && b.animLock <= 0) {
+      b.state = 'chase'; this.walkTo(b, tgt, def.run * (f < 0.33 ? 1.35 : 1), dt);
+      const r = Math.hypot(b.pos.x, b.pos.z); if (r > 32) { b.pos.x *= 32 / r; b.pos.z *= 32 / r; }
+    } else b.state = 'idle';
+  }
+  bossAlive() { return this.list.find(b => b.def.boss && b.state !== 'dead') ?? null; }
+
   private walkTo(b: Beast, to: THREE.Vector3, speed: number, dt: number) {
     const def = b.def;
     const dir = to.clone().sub(b.pos); if (!def.water && !def.fly) dir.y = 0;
     const len = dir.length(); if (len < 0.3) return;
     dir.divideScalar(len);
     b.yaw = Math.atan2(dir.x, dir.z);
+    if (def.fly) {
+      // flyers go anywhere there's air, and keep within a few blocks of the ground
+      const nx = b.pos.x + dir.x * speed * dt, ny = b.pos.y + dir.y * speed * dt, nz = b.pos.z + dir.z * speed * dt;
+      const id = this.world.get(Math.floor(nx), Math.floor(ny + 0.3), Math.floor(nz));
+      if (id === 0 || (id > 0 && BLOCKS[id].solid === false && id !== B.water)) b.pos.set(nx, ny, nz);
+      else b.target.set(b.pos.x - dir.x * 6, b.pos.y + 1.5, b.pos.z - dir.z * 6);
+      return;
+    }
     if (def.water) {
       const nx = b.pos.x + dir.x * speed * dt, nz = b.pos.z + dir.z * speed * dt;
       const id = this.world.get(Math.floor(nx), Math.floor(b.pos.y + dir.y * speed * dt), Math.floor(nz));
@@ -504,7 +651,7 @@ export class Animals {
     b.hp -= amount; b.flash = 0.25; b.provoked = true;
     if (b.bar === undefined) this.ensureBar(b);
     // knockback: lighter creatures fly further
-    const push = (6 * knock) / (1 + b.def.hp / 50);
+    const push = b.def.boss ? 0 : (6 * knock) / (1 + b.def.hp / 50);
     tmp.copy(b.pos).sub(from).setY(0); if (tmp.lengthSq() > 0.0001) tmp.normalize();
     b.kb.set(tmp.x * push, 0, tmp.z * push); b.hop = 0.3;
     if (b.def.mood !== 'hostile' && !b.owner) {

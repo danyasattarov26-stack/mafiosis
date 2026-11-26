@@ -4,6 +4,8 @@ import { Room, MAX_PLAYERS, clean, type Msg } from './coop';
 import * as THREE from 'three';
 import type { Game, Grave, SaveData } from '../game/game';
 import { settings } from '../game/settings';
+import { BLOCK_ID } from '../shared/blocks';
+import { t } from '../i18n/i18n';
 
 /** a custom block from someone else: six faces of 16×16 pixels and a sane recipe */
 function validBlock(c: any) {
@@ -66,6 +68,12 @@ export class Session {
     let rideT = 0;
     game.net.ride = b => { const now = performance.now(); if (now - rideT < 90) return; rideT = now; this.room.send({ k: 'ride', id: b.id, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, anim: b.cur }, host()); };
     game.onSlept = () => this.syncTime();
+    game.net.travel = () => this.room.send({ k: 'travel' }, host());
+    game.net.dim = (to, at) => this.room.send({ k: 'dim', dim: to, at });
+    game.net.beam = (x, y, z) => this.room.send({ k: 'beam', x, y, z });
+    game.net.ending = () => this.room.send({ k: 'plant' }, host());
+    game.net.ended = () => this.room.send({ k: 'ended' });
+    game.net.toastAll = (key, vars) => this.room.send({ k: 'qtoast', key, vars });
     this.room.onJoin = peer => {
       if (this.host) return;   // hosts wait for hello
       this.room.send({ k: 'state', ...game.myState() }, peer);
@@ -93,7 +101,17 @@ export class Session {
         if (first) this.onToast(`${m.name} ✓`, 'good');
         break;
       }
-      case 'block': g.world.set(m.x | 0, m.y | 0, m.z | 0, m.id | 0, true); break;
+      case 'block': {
+        g.world.set(m.x | 0, m.y | 0, m.z | 0, m.id | 0, true);
+        if (this.host && (m.id | 0) === BLOCK_ID.sky_beacon && g.dim === 'earth') g.data.quest!.beacon = [m.x | 0, m.y | 0, m.z | 0];
+        break;
+      }
+      case 'travel': if (this.host) g.travel(); break;
+      case 'dim': if (!this.host && from === this.hostPeer && (m.dim === 'sky' || m.dim === 'earth') && Array.isArray(m.at)) g.followDim(m.dim, [+m.at[0], +m.at[1], +m.at[2]]); break;
+      case 'beam': g.showBeam(m.x | 0, m.y | 0, m.z | 0); break;
+      case 'plant': if (this.host && g.data.quest!.beacon) { const b = g.data.quest!.beacon; g.ending(b[0], b[1], b[2]); } break;
+      case 'ended': if (!this.host && from === this.hostPeer && !g.data.quest!.ended) { g.data.quest!.ended = true; g.onEnding?.(); } break;
+      case 'qtoast': if (from === this.hostPeer && typeof m.key === 'string' && m.key.startsWith('quest.')) g.toast(t(m.key as any, m.vars ?? {}), 'good'); break;
       case 'animals': if (!this.host) g.animals.applySnapshot(m.list); break;
       case 'attack': {
         if (!this.host) return;
@@ -114,7 +132,7 @@ export class Session {
         else if (m.g && !g.graves.some(q => q.id === m.g.id)) g.graves.push(m.g as Grave);
         break;
       }
-      case 'time': if (!this.host) { const jump = +m.time - g.time > 60; g.time = +m.time; g.weather = m.weather; if (jump) g.sleepFade = 1.6; } break;
+      case 'time': if (!this.host) { const jump = +m.time - g.time > 60; g.time = +m.time; g.weather = m.weather; if (jump) g.sleepFade = 1.6; if (m.quest && typeof m.quest === 'object') Object.assign(g.data.quest!, m.quest); } break;
       case 'hurt': if (!this.host && from === this.hostPeer) g.hurtBy(Math.min(40, +m.dmg || 0), new THREE.Vector3(+m.x, +m.y, +m.z), false); break;
       case 'arrow': if (Array.isArray(m.p) && Array.isArray(m.v)) g.projectiles.fire(new THREE.Vector3(+m.p[0], +m.p[1], +m.p[2]), new THREE.Vector3(+m.v[0], +m.v[1], +m.v[2]), 'ghost', 0); break;
       case 'cont': if (typeof m.key === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(m.key) && (m.c === null || (m.c && (m.c.kind === 'chest' || m.c.kind === 'furnace')))) g.setContainer(m.key, m.c); break;
@@ -144,7 +162,7 @@ export class Session {
     if (g.sendTick(dt)) this.room.send({ k: 'state', ...g.myState() });
     if (this.host) {
       this.animT -= dt; if (this.animT <= 0) { this.animT = 0.2; this.room.send({ k: 'animals', list: g.animals.snapshot() }); }
-      this.timeT -= dt; if (this.timeT <= 0) { this.timeT = 5; this.room.send({ k: 'time', time: g.time, weather: g.weather }); }
+      this.timeT -= dt; if (this.timeT <= 0) { this.timeT = 5; this.room.send({ k: 'time', time: g.time, weather: g.weather, quest: g.data.quest }); }
     }
     // hold E next to a downed friend for 3 seconds to bring them back
     const f = g.downedFriendNear();

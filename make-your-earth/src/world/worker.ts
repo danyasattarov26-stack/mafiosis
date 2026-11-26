@@ -13,7 +13,7 @@ function get(cx: number, cz: number) {
 }
 
 type Msg =
-  | { t: 'init'; seed: number }
+  | { t: 'init'; seed: number; dim?: 'earth' | 'sky' }
   | { t: 'gen'; cx: number; cz: number; edits: [number, number][] }
   | { t: 'mesh'; cx: number; cz: number; seq: number }
   | { t: 'set'; x: number; y: number; z: number; id: number }
@@ -23,7 +23,7 @@ type Msg =
 self.onmessage = (e: MessageEvent<Msg>) => {
   const m = e.data;
   switch (m.t) {
-    case 'init': gen = new TerrainGen(m.seed); chunks.clear(); break;
+    case 'init': gen = new TerrainGen(m.seed, m.dim ?? 'earth'); chunks.clear(); break;
     case 'tables': buildTables(m.extra); setTiles(m.tiles); break;
     case 'gen': {
       const c = get(m.cx, m.cz);

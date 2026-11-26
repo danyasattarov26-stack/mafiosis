@@ -30,6 +30,7 @@ Live: https://make-your-earth.vercel.app
 | C | B | Crouch (raises your shield; gets you off a horse) |
 | E | Y | Inventory and crafting |
 | M | Back | Map (click to add waypoints) |
+| J | — | Journal: the story and what to do next |
 | F | X | Eat / drink what you hold |
 | Q | D-pad down | Drop one item |
 | T | D-pad up | Chat (co-op) |
@@ -39,6 +40,17 @@ Live: https://make-your-earth.vercel.app
 | Esc | Start | Pause / cancel a blueprint |
 
 Keys can be rebound in Settings.
+
+## The story (the goal of the game)
+
+1. Craft a **Star Compass** (a compass and 2 crystal shards). Hold it to see an arrow to the nearest Starstone.
+2. Find the four **Starstones** in ancient vaults: ember (volcanic altars), frost (igloos), verdant (jungle temples), tide (shipwrecks).
+3. Build the **Skyward Beacon** at an anvil (the four Starstones, a gold block and two glow crystals) and place it.
+4. Use it: a column of light rises. Step in and it carries you above the clouds to the **Sky Isles**, a second world of floating islands. Friends in co-op come too.
+5. Ring the four **Sky Bells** on the outer islands. The **Sky Colossus** wakes in the arena: it slams the ground, throws crystal shards and calls wisps.
+6. Defeat it for the **World Seed**, go home through the Sky Altar, and use your Beacon while holding the seed: the ending. Then keep playing.
+
+The journal (J, or 📜 on a phone) shows every step. The goal for right now is always under the biome name.
 
 ## Crafting
 
@@ -56,7 +68,7 @@ There's no button for it. Press **F2 three times quickly**, or on a phone **tap 
 corner five times**. The first time you choose a PIN (4–12 digits); after that the PIN is needed every time.
 It's stored on that device only. Friends who join your world can't open it.
 
-The panel has an item picker (search, categories, icons), time and weather, players (kick, ban, mute, teleport,
+The panel has an item picker (search, categories, icons), teleport (coordinates, bed, Beacon, waypoints), travel to the Sky Isles and back, building any structure in front of you, time and weather, players (kick, ban, mute, teleport,
 give, look at inventory), god mode, and **Mods on this device** for trying a mod before you publish it.
 
 ## Mods

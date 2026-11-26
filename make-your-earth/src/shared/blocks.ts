@@ -190,6 +190,19 @@ export const BLOCKS: BlockDef[] = [
   { key: 'magma_rock', en: 'Magma Rock', pt: 'Rocha de Magma', top: T('cobble', '#3a2a28', '#ff6a1a'), hard: 2, tool: 'pickaxe', light: 6 },
   { key: 'charred_log', en: 'Charred Log', pt: 'Tronco Carbonizado', top: T('logTop', '#3a3030', '#1e1a1a'), side: T('log', '#2a2424', '#141212'), hard: 1.6, tool: 'axe', drop: 'charcoal' },
   { key: 'vines', en: 'Vines', pt: 'Trepadeiras', top: T('plant', '#3e6a28', '#2e5a1e'), hard: 0.1, tool: 'hand', drop: 'plant_fiber', render: 'cross', solid: false, transparent: true, flammable: true },
+  // ---- v5: the quest and the Sky Isles (append only) ----
+  { key: 'ancient_vault', en: 'Ancient Vault', pt: 'Cofre Antigo', top: T('chest', '#5a4a6a', '#f2c23a'), hard: -1, tool: 'hand', drop: null, light: 6 },
+  { key: 'sky_beacon', en: 'Skyward Beacon', pt: 'Farol Celeste', top: T('crystal', '#f2d24a', '#fff6c0'), side: T('metal', '#d8b030', '#f5d04a'), hard: 4, tool: 'pickaxe', light: 15 },
+  { key: 'sky_altar', en: 'Sky Altar', pt: 'Altar do Céu', top: T('crystal', '#f2d24a', '#fff6c0'), side: T('tiles', '#e8e2f2', '#b07af0'), hard: -1, tool: 'hand', drop: null, light: 15 },
+  { key: 'skystone', en: 'Skystone', pt: 'Pedra Celeste', top: T('stone', '#b8b2c8', '#9a94ae'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'skystone_bricks', en: 'Skystone Bricks', pt: 'Tijolos Celestes', top: T('brick', '#cac4da', '#8a84a0'), hard: 2, tool: 'pickaxe' },
+  { key: 'sky_grass', en: 'Sky Grass', pt: 'Relva Celeste', top: T('grass', '#5ad8a8', '#3ab88a'), side: T('grassSide', '#b8b2c8', '#5ad8a8'), bottom: T('stone', '#b8b2c8', '#9a94ae'), hard: 0.6, tool: 'shovel', drop: 'skystone' },
+  { key: 'cloud', en: 'Cloud', pt: 'Nuvem', top: T('snow', '#ffffff', '#eef2f8'), hard: 0.3, tool: 'hand', drop: null },
+  { key: 'skywood_log', en: 'Skywood Log', pt: 'Tronco Celeste', top: T('logTop', '#e8d8f2', '#a88ac8'), side: T('log', '#d8c8e8', '#a88ac8'), hard: 2, tool: 'axe', flammable: true },
+  { key: 'sky_leaves', en: 'Sky Blossom', pt: 'Flor Celeste', top: T('leaves', '#f2a8d8', '#ffd8f0'), hard: 0.2, tool: 'hand', drop: 'stick', transparent: true, light: 5 },
+  { key: 'starlight_flower', en: 'Starlight Flower', pt: 'Flor da Luz Estelar', top: T('flower', '#3ab88a', '#fff6a0'), hard: 0.05, tool: 'hand', drop: 'herbs', render: 'cross', solid: false, transparent: true, light: 9 },
+  { key: 'sky_bell', en: 'Sky Bell', pt: 'Sino do Céu', top: T('metal', '#f5d04a', '#b88a1a'), hard: -1, tool: 'hand', drop: null, light: 10 },
+  { key: 'sky_bell_rung', en: 'Rung Sky Bell', pt: 'Sino do Céu Tocado', top: T('metal', '#8ad8ff', '#4a8ab8'), hard: -1, tool: 'hand', drop: null, light: 15 },
 ];
 
 

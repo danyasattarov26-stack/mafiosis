@@ -4,7 +4,7 @@
   draws each chunk as one opaque mesh plus one water mesh using a single atlas shader.
 */
 import * as THREE from 'three';
-import { CS, CH, SEA, idx, TerrainGen } from './gen';
+import { CS, CH, SEA, idx, TerrainGen, type Dim } from './gen';
 import { BLOCKS } from '../shared/blocks';
 import { BLOCK_TILES } from './tiles';
 
@@ -70,8 +70,8 @@ export class World {
   onChunkReady: (c: Chunk) => void = () => {};
   center = { cx: 0, cz: 0 };
 
-  constructor(public seed: number, atlas: THREE.Texture, public renderDist = 6) {
-    this.gen = new TerrainGen(seed);
+  constructor(public seed: number, atlas: THREE.Texture, public renderDist = 6, public dim: Dim = 'earth') {
+    this.gen = new TerrainGen(seed, dim);
     this.uniforms = {
       atlas: { value: atlas }, uSun: { value: 1 }, uSunColor: { value: new THREE.Color(1, 1, 1) }, uFogColor: { value: new THREE.Color('#b8d4ea') },
       uFogNear: { value: 40 }, uFogFar: { value: 90 }, uTime: { value: 0 }, uWind: { value: 1 },
@@ -80,7 +80,7 @@ export class World {
     this.waterMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: { ...this.uniforms, uAlpha: { value: 0.72 }, uWave: { value: 1 } }, transparent: true, depthWrite: false });
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     this.worker.onmessage = e => this.onWorker(e.data);
-    this.worker.postMessage({ t: 'init', seed });
+    this.worker.postMessage({ t: 'init', seed, dim });
   }
   /** tell the worker about custom blocks and their textures, then redraw everything */
   syncTables(baseCount: number) {

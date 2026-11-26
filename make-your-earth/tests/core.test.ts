@@ -56,7 +56,7 @@ describe('world generation', () => {
   it('produces all eight biomes somewhere', () => {
     const seen = new Set<number>();
     for (let z = -30000; z < 30000; z += 400) for (let x = -30000; x < 30000; x += 400) seen.add(g.column(x, z).biome);
-    expect(seen.size).toBe(BIOMES.length);
+    expect(seen.size).toBe(BIOMES.filter(b => b.key !== 'sky').length);   // the Sky Isles are their own world
   });
   it('meshes a chunk into quads', () => {
     const c = g.generate(0, 0), m = meshChunk(c, [g.generate(-1, 0), g.generate(1, 0), g.generate(0, -1), g.generate(0, 1)]);
