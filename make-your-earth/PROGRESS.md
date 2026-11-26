@@ -56,4 +56,12 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
   - beds (spawn point, skip the night), two-block doors that open and close, windows, stained glass, iron bars, lanterns;
   - about 55 new blocks and 25 new items: coloured wool, concrete, terracotta and glass, nine dyes, three new planks, polished stone, crates, barrels and new foods;
   - graphics: corner shadows (ambient occlusion), swaying leaves and plants, sparkling water, drifting clouds; fixed texture bleed on some blocks.
+- [x] **Worlds, crafting and mods update:**
+  - five new biomes: swamp (pools, vine trees), taiga (pine forest floor), autumn forest (orange and red trees, pumpkins), red canyon (stepped mesas with striped terracotta) and volcanic fields (ash, basalt, magma, lava pools, charred trees);
+  - eight new structures: mine shafts with a room underground, campsites, stone circles, fishing docks, swamp shacks on stilts, volcanic altars, windmills (also in villages) and log cabins;
+  - crafting grid (2×2 by hand, 3×3 at stations) with a recipe book that fills it;
+  - Block Maker moved to a Designer's Bench;
+  - admin panel hidden (F2 ×3, or five taps on the coordinates) and locked with a PIN; item picker with icons;
+  - mods: a Mods tab, five official mods, owner-only publishing, try-before-publishing in the admin panel, MODS.md;
+  - fixed: painted blocks with see-through pixels made the ground next to them invisible.
 - [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

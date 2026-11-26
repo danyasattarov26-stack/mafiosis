@@ -177,6 +177,19 @@ export const BLOCKS: BlockDef[] = [
   { key: 'pumpkin', en: 'Pumpkin', pt: 'Abóbora', top: T('logTop', '#e8862a', '#5a7a2a'), side: T('pumpkin', '#e8862a', '#c86a1e'), hard: 0.8, tool: 'axe' },
   { key: 'iron_bars', en: 'Iron Bars', pt: 'Grades de Ferro', top: T('bars', '#5a5e64', '#8a9098'), hard: 3, tool: 'pickaxe', tier: 1, transparent: true },
   { key: 'flower_blue', en: 'Cornflower', pt: 'Centáurea', top: T('flower', '#4a8030', '#4a6ae8'), hard: 0.05, tool: 'hand', drop: 'blue_petals', render: 'cross', solid: false, transparent: true },
+  // ---- v4: new biomes and the designer's bench (append only) ----
+  { key: 'designer_table', en: "Designer's Bench", pt: 'Bancada de Design', top: T('table', '#f2d24a', '#4a6ad8'), side: T('tiles', '#e9eef2', '#d8463a'), hard: 1.5, tool: 'axe', station: 'designer', flammable: true },
+  { key: 'autumn_leaves', en: 'Autumn Leaves', pt: 'Folhas de Outono', top: T('leaves', '#d8782a', '#b85a1e'), hard: 0.2, tool: 'hand', drop: 'stick', transparent: true, flammable: true },
+  { key: 'crimson_leaves', en: 'Crimson Leaves', pt: 'Folhas Carmesim', top: T('leaves', '#c03a2a', '#9a2a20'), hard: 0.2, tool: 'hand', drop: 'stick', transparent: true, flammable: true },
+  { key: 'swamp_grass', en: 'Swamp Grass', pt: 'Relva do Pântano', top: T('grass', '#4e6a34', '#3e5a2a'), side: T('grassSide', '#5a4430', '#4e6a34'), bottom: T('noise', '#5a4430', '#4a3826'), hard: 0.6, tool: 'shovel', drop: 'dirt' },
+  { key: 'podzol', en: 'Forest Floor', pt: 'Solo de Floresta', top: T('noise', '#6a4a2a', '#4e3620'), side: T('grassSide', '#7a5536', '#6a4a2a'), bottom: T('noise', '#7a5536', '#6a4a2e'), hard: 0.6, tool: 'shovel', drop: 'dirt' },
+  { key: 'terracotta_orange', en: 'Orange Terracotta', pt: 'Terracota Laranja', top: T('clay', '#c87a3a', '#b86a30'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'terracotta_yellow', en: 'Yellow Terracotta', pt: 'Terracota Amarela', top: T('clay', '#c8a040', '#b89034'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'terracotta_brown', en: 'Brown Terracotta', pt: 'Terracota Castanha', top: T('clay', '#6a4a32', '#5a3e2a'), hard: 1.5, tool: 'pickaxe' },
+  { key: 'ash', en: 'Volcanic Ash', pt: 'Cinza Vulcânica', top: T('noise', '#5c5a5e', '#48464c'), hard: 0.5, tool: 'shovel' },
+  { key: 'magma_rock', en: 'Magma Rock', pt: 'Rocha de Magma', top: T('cobble', '#3a2a28', '#ff6a1a'), hard: 2, tool: 'pickaxe', light: 6 },
+  { key: 'charred_log', en: 'Charred Log', pt: 'Tronco Carbonizado', top: T('logTop', '#3a3030', '#1e1a1a'), side: T('log', '#2a2424', '#141212'), hard: 1.6, tool: 'axe', drop: 'charcoal' },
+  { key: 'vines', en: 'Vines', pt: 'Trepadeiras', top: T('plant', '#3e6a28', '#2e5a1e'), hard: 0.1, tool: 'hand', drop: 'plant_fiber', render: 'cross', solid: false, transparent: true, flammable: true },
 ];
 
 

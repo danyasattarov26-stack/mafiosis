@@ -16,6 +16,8 @@ import { Session } from './net/session';
 import { inbox, newCode, profile, type Invite } from './net/coop';
 import { MAX_PLAYERS } from './net/coop';
 import { RECIPES, ITEM } from './shared/items';
+import { loadMods, failed, modIds } from './mods/mods';
+import { unlockAdmin, watchSecretOpen } from './ui/adminlock';
 import { BLOCK_ID } from './shared/blocks';
 
 declare const __BUILD__: string;
@@ -63,8 +65,11 @@ function toast(msg: string, kind = '') { if (hud) return hud.toast(msg, kind); c
 
 // ---------- starting a world ----------
 menu.onPlay = play;
+// mods load once, before any world opens
+const modsReady = loadMods().then(() => { for (const f of failed) toast(t('mods.failed', { id: f.id }), 'bad'); });
 async function play(c: PlayChoice) {
   sound.start();
+  await modsReady;
   if (c.mode === 'join') {
     menu.show(false); showLoading(t('play.connecting'));
     session = new Session(c.code, false);
@@ -73,6 +78,8 @@ async function play(c: PlayChoice) {
     hideLoading();
     if (!w) { session.close(); session = null; menu.show(true); toast(t('play.notFound'), 'bad'); return; }
     let mine: any = null; try { mine = JSON.parse(localStorage.getItem('mye-guest-' + w.save.id) || 'null'); } catch { /* none */ }
+    const missing = (w.save.mods ?? []).filter(id => !modIds().includes(id));
+    if (missing.length) setTimeout(() => toast(t('mods.hostUses', { list: missing.join(', ') })), 2500);
     const save: SaveData = { ...w.save, guest: true, player: mine ?? { pos: w.spawn, yaw: 0, name: settings.name || randomName(), stats: undefined, inv: null } } as any;
     startGame(save, c.code, !mine);
     return;
@@ -100,7 +107,7 @@ function startGame(save: SaveData, code?: string, newGuest = false) {
   game.onChange = () => { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; hud?.refresh(); }); };
   game.onOpenContainer = k => { input.exitLock(); hud!.openContainer(k); };
   game.onContainer = k => { if (hud?.open === 'inv' && hud.container === k) { if (!game!.containers[k]) { hud.close(); input.requestLock(); } else hud.renderInventory(); } };
-  game.onOpenStation = s => { input.exitLock(); if (s === 'blueprint') hud!.openBlueprints(); else hud!.openInventory(s === 'chest' ? 'hand' : s); };
+  game.onOpenStation = s => { input.exitLock(); if (s === 'blueprint') hud!.openBlueprints(); else if (s === 'designer') { game!.stations.add('designer'); openBlockMaker(); } else hud!.openInventory(s === 'chest' ? 'hand' : s); };
   game.onDeath = grave => {
     const name = game!.rebirth();
     input.exitLock();
@@ -170,7 +177,6 @@ renderer.setAnimationLoop(now => {
     if (overlay) { if (input.hit('menu')) overlay.close(); }
     else {
     if (input.hit('blockmaker') && !hud.open) openBlockMaker();
-    if (input.hit('admin') && !hud.open) openAdmin();
     if (input.hit('menu') && (game.ghost || game.selecting)) { game.cancelGhost(); game.selecting = null; input.endFrame(); }
     const esc = input.hit('menu'), lost = input.hit('unlocked') && !hud.open && !chatOpen && !overlay;
     if (esc && hud.open && hud.open !== 'dead') { hud.close(); input.requestLock(); }
@@ -194,12 +200,19 @@ renderer.setAnimationLoop(now => {
 let overlay: BlockMaker | Admin | null = null;
 function openBlockMaker() {
   if (!game || !hud || overlay) return;
+  // the Block Maker lives at a Designer's Bench, not in your pocket
+  if (!game.stations.has('designer')) { toast(t('bm.needBench'), 'bad'); return; }
   input.exitLock(); hud.open = 'bm'; game.paused = true;
   overlay = new BlockMaker(game, () => { overlay = null; if (hud) { hud.open = null; } input.requestLock(); });
 }
-function openAdmin() {
-  if (!game || !hud || overlay) return;
+watchSecretOpen(() => { if (!game || !hud || overlay) return; if (hud.open === 'pause') hud.close(); if (!hud.open) openAdmin(); });
+let unlocking = false;
+async function openAdmin() {
+  if (!game || !hud || overlay || unlocking) return;
   if (game.isGuest) { toast(t('admin.onlyOwner'), 'bad'); return; }
+  input.exitLock(); unlocking = true; game.paused = true; hud.open = 'admin';
+  const ok = await unlockAdmin(); unlocking = false;
+  if (!ok || !game || !hud) { if (hud) hud.open = null; input.requestLock(); return; }
   input.exitLock(); hud.open = 'admin'; game.paused = true;
   overlay = new Admin(game, session, () => { overlay = null; if (hud) hud.open = null; input.requestLock(); });
 }

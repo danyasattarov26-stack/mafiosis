@@ -160,6 +160,87 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
     s.set(2, 1, 9, B.loot_chest); s.set(1, 1, 3, B.loot_chest);
     return s.done();
   },
+  swamp_shack: r => {
+    // a hut on stilts above the water
+    const s = new S(7, 7, 10, B.oak_log).clear();
+    for (const [x, z] of [[0, 0], [6, 0], [0, 6], [6, 6]]) s.box(x, -2, z, x, 2, z, B.oak_log);
+    s.box(0, 3, 0, 6, 3, 6, B.oak_planks);
+    s.box(1, 4, 1, 5, 6, 5, B.pine_planks, true);
+    s.set(3, 4, 1, B.wooden_door); s.set(3, 5, 1, B.wooden_door); s.set(1, 5, 3, B.window); s.set(5, 5, 3, B.window);
+    roof(s, 7, 7, 7, B.mossy_cobble);
+    s.set(2, 5, 4, B.lantern); s.set(4, 4, 4, B.loot_chest); s.set(2, 4, 4, B.red_mushroom); s.set(4, 4, 2, B.bookshelf);
+    for (let y = 0; y <= 2; y++) s.set(3, y, 0, B.ladder);
+    return s.done();
+  },
+  mine_shaft: r => {
+    // a timbered shaft with a ladder down to a lamp-lit room full of crates
+    const s = new S(9, 9, 6, B.cobblestone);
+    s.box(2, 0, 2, 6, 0, 6, B.oak_planks);
+    for (const [x, z] of [[3, 3], [5, 3], [3, 5], [5, 5]]) s.box(x, 1, z, x, 3, z, B.oak_log);
+    s.box(3, 4, 3, 5, 4, 5, B.oak_planks); s.set(4, 3, 4, B.lantern);
+    const deep = -14 - Math.floor(r() * 6);
+    for (let y = deep + 1; y <= 0; y++) { s.set(4, y, 4, B.ladder); s.set(4, y, 3, B.oak_planks); }
+    s.box(0, deep - 3, 0, 8, deep + 1, 8, B.cobblestone, true);
+    s.box(1, deep - 2, 1, 7, deep, 7, 0); s.box(0, deep - 3, 0, 8, deep - 3, 8, B.oak_planks);
+    s.set(4, deep - 2, 4, B.ladder); s.set(4, deep - 1, 4, B.ladder); s.set(4, deep, 4, B.ladder);
+    for (const [x, z] of [[1, 1], [7, 1], [1, 7]]) s.set(x, deep - 2, z, B.crate);
+    s.set(7, deep - 2, 7, B.loot_chest); s.set(1, deep - 2, 4, B.loot_chest); s.set(7, deep - 2, 4, B.barrel);
+    s.set(2, deep, 2, B.lantern); s.set(6, deep, 6, B.lantern);
+    for (const [x, z] of [[0, 3], [8, 5], [3, 8]]) s.set(x, deep - 1, z, r() < 0.5 ? B.iron_ore : B.coal_ore);
+    return s.done();
+  },
+  camp: r => {
+    const s = new S(9, 9, 4, B.dirt).clear();
+    const cloth = [B.wool_red, B.wool_blue, B.wool_green, B.wool_orange][Math.floor(r() * 4)];
+    for (let z = 1; z <= 4; z++) { s.set(1, 0, z, cloth); s.set(2, 1, z, cloth); s.set(3, 2, z, cloth); s.set(4, 1, z, cloth); s.set(5, 0, z, cloth); }
+    s.set(3, 0, 4, B.loot_chest); s.set(3, 0, 2, B.bed);
+    s.set(6, 0, 7, B.campfire); s.set(4, 0, 7, B.oak_log); s.set(8, 0, 7, B.oak_log); s.set(7, 0, 5, B.barrel);
+    return s.done();
+  },
+  stone_circle: r => {
+    const s = new S(11, 11, 6, B.cobblestone).clear();
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2, x = Math.round(5 + Math.cos(a) * 4.5), z = Math.round(5 + Math.sin(a) * 4.5), hgt = 2 + Math.floor(r() * 3);
+      for (let y = 0; y < hgt; y++) s.set(x, y, z, r() < 0.4 ? B.mossy_cobble : B.stone_bricks);
+    }
+    s.box(4, 0, 4, 6, 0, 6, B.chiseled_sandstone); s.set(5, 1, 5, B.loot_chest); s.set(4, 1, 6, B.glow_mushroom);
+    return s.done();
+  },
+  dock: () => {
+    // a fishing pier out over the water
+    const s = new S(3, 12, 4, B.oak_log);
+    for (let z = 0; z < 12; z++) { for (let x = 0; x < 3; x++) s.set(x, 0, z, B.oak_planks); s.set(0, 1, z, 0); s.set(1, 1, z, 0); s.set(2, 1, z, 0); }
+    for (const z of [0, 4, 8, 11]) { s.box(0, -4, z, 0, -1, z, B.oak_log); s.box(2, -4, z, 2, -1, z, B.oak_log); }
+    s.set(0, 1, 11, B.barrel); s.set(2, 1, 11, B.loot_chest); s.set(1, 1, 10, B.lantern);
+    return s.done();
+  },
+  obsidian_altar: () => {
+    const s = new S(9, 9, 5, B.basalt).clear();
+    s.box(0, 0, 0, 8, 0, 8, B.basalt); s.box(1, 1, 1, 7, 1, 7, B.obsidian); s.box(2, 1, 2, 6, 1, 6, 0);
+    s.box(3, 0, 3, 5, 0, 5, B.magma_rock); s.set(4, 0, 4, B.lava);
+    for (const [x, z] of [[1, 1], [7, 1], [1, 7], [7, 7]]) s.box(x, 1, z, x, 3, z, B.obsidian);
+    s.set(2, 1, 4, B.loot_chest); s.set(6, 1, 4, B.loot_chest);
+    return s.done();
+  },
+  windmill: r => {
+    const s = new S(7, 7, 14, B.cobblestone).clear();
+    s.box(1, 0, 1, 5, 0, 5, B.cobblestone); s.box(1, 1, 1, 5, 8, 5, B.stone_bricks, true);
+    s.set(3, 1, 1, B.wooden_door); s.set(3, 2, 1, B.wooden_door); s.set(1, 5, 3, B.window); s.set(5, 5, 3, B.window);
+    roof(s, 9, 7, 7, B.pine_planks);
+    // sails on the front
+    for (let k = -4; k <= 4; k++) { if (k) { s.set(3 + k, 7, 0, B.wool); s.set(3, 7 + k, 0, B.wool); } }
+    s.set(3, 7, 0, B.oak_log);
+    s.set(4, 1, 4, B.hay_bale); s.set(2, 1, 4, r() < 0.6 ? B.loot_chest : B.barrel); s.set(2, 3, 2, B.torch);
+    return s.done();
+  },
+  log_cabin: r => {
+    const s = new S(7, 6, 8, B.cobblestone).clear();
+    s.box(0, 0, 0, 6, 0, 5, B.cobblestone); s.box(0, 1, 0, 6, 3, 5, B.pine_log, true);
+    s.set(3, 1, 0, B.wooden_door); s.set(3, 2, 0, B.wooden_door); s.set(0, 2, 3, B.window); s.set(6, 2, 3, B.window);
+    roof(s, 4, 7, 6, B.pine_planks);
+    s.set(1, 1, 4, B.bed); s.set(5, 1, 4, B.furnace); s.set(5, 1, 1, r() < 0.7 ? B.loot_chest : B.crate); s.set(1, 2, 1, B.lantern);
+    return s.done();
+  },
   ruins: r => {
     const s = new S(9, 9, 5, B.cobblestone);
     for (let z = 0; z < 9; z++) for (let x = 0; x < 9; x++) {
@@ -173,13 +254,18 @@ export const BUILDERS: Record<string, (r: () => number) => Shape> = {
 
 /** structures that can appear in each biome, with how many grid cells hold one */
 const KINDS: Record<number, { kind: string; w: number }[]> = {
-  [BIOME_ID.forest]: [{ kind: 'village', w: 3 }, { kind: 'cabin', w: 3 }, { kind: 'tower', w: 1 }, { kind: 'ruins', w: 2 }],
-  [BIOME_ID.savanna]: [{ kind: 'village', w: 3 }, { kind: 'ruins', w: 1 }],
-  [BIOME_ID.desert]: [{ kind: 'pyramid', w: 2 }, { kind: 'desert_well', w: 3 }, { kind: 'ruins', w: 1 }],
-  [BIOME_ID.jungle]: [{ kind: 'temple', w: 3 }, { kind: 'ruins', w: 1 }],
+  [BIOME_ID.forest]: [{ kind: 'village', w: 3 }, { kind: 'cabin', w: 3 }, { kind: 'tower', w: 1 }, { kind: 'ruins', w: 2 }, { kind: 'camp', w: 2 }, { kind: 'stone_circle', w: 1 }, { kind: 'windmill', w: 1 }],
+  [BIOME_ID.savanna]: [{ kind: 'village', w: 3 }, { kind: 'ruins', w: 1 }, { kind: 'camp', w: 2 }, { kind: 'windmill', w: 1 }],
+  [BIOME_ID.desert]: [{ kind: 'pyramid', w: 2 }, { kind: 'desert_well', w: 3 }, { kind: 'ruins', w: 1 }, { kind: 'camp', w: 1 }],
+  [BIOME_ID.jungle]: [{ kind: 'temple', w: 3 }, { kind: 'ruins', w: 1 }, { kind: 'camp', w: 1 }],
   [BIOME_ID.tundra]: [{ kind: 'igloo', w: 3 }, { kind: 'hunters_camp', w: 3 }],
-  [BIOME_ID.mountains]: [{ kind: 'tower', w: 2 }, { kind: 'ruins', w: 1 }],
-  [BIOME_ID.beach]: [{ kind: 'beach_hut', w: 3 }, { kind: 'shipwreck', w: 2 }],
+  [BIOME_ID.mountains]: [{ kind: 'tower', w: 2 }, { kind: 'ruins', w: 1 }, { kind: 'mine_shaft', w: 3 }, { kind: 'stone_circle', w: 1 }],
+  [BIOME_ID.beach]: [{ kind: 'beach_hut', w: 3 }, { kind: 'shipwreck', w: 2 }, { kind: 'dock', w: 2 }],
+  [BIOME_ID.swamp]: [{ kind: 'swamp_shack', w: 3 }, { kind: 'ruins', w: 1 }],
+  [BIOME_ID.taiga]: [{ kind: 'log_cabin', w: 3 }, { kind: 'camp', w: 2 }, { kind: 'stone_circle', w: 1 }, { kind: 'mine_shaft', w: 1 }],
+  [BIOME_ID.autumn]: [{ kind: 'village', w: 3 }, { kind: 'cabin', w: 2 }, { kind: 'camp', w: 2 }, { kind: 'stone_circle', w: 2 }, { kind: 'windmill', w: 1 }],
+  [BIOME_ID.canyon]: [{ kind: 'mine_shaft', w: 3 }, { kind: 'ruins', w: 1 }, { kind: 'desert_well', w: 1 }, { kind: 'camp', w: 1 }],
+  [BIOME_ID.volcanic]: [{ kind: 'obsidian_altar', w: 3 }, { kind: 'ruins', w: 1 }],
 };
 export const CELL = 144;              // one chance of a structure per 144×144 blocks
 const CHANCE = 0.55;
@@ -202,7 +288,7 @@ export function siteAt(gx: number, gz: number, seed: number, column: (x: number,
     for (let i = 0; i < tries; i++) {
       const qx = i ? Math.round(px + (r() - 0.5) * 14) : px, qz = i ? Math.round(pz + (r() - 0.5) * 14) : pz;
       const c = column(qx, qz);
-      if (k !== 'shipwreck' && (c.h < SEA + 1 || c.river)) continue;
+      if (k !== 'shipwreck' && k !== 'dock' && k !== 'swamp_shack' && (c.h < SEA + 1 || c.river)) continue;
       if (k !== 'shipwreck' && Math.abs(c.h - col.h) > 8 && parts.length) continue;
       if (parts.some(p => Math.abs(p.x - qx) < 9 && Math.abs(p.z - qz) < 9)) continue;   // don't overlap neighbours
       parts.push({ x: qx, z: qz, rot: Math.floor(r() * 4), shape: BUILDERS[k](r), kind: k });
@@ -212,10 +298,13 @@ export function siteAt(gx: number, gz: number, seed: number, column: (x: number,
   if (kind === 'village') {
     add('well', x, z);
     const n = 3 + Math.floor(r() * 4);
-    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + r() * 0.5, d = 13 + r() * 10; add(i === 0 ? 'smithy' : i === n - 1 && r() < 0.6 ? 'farm' : 'house', Math.round(x + Math.cos(a) * d), Math.round(z + Math.sin(a) * d), 6); }
+    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + r() * 0.5, d = 13 + r() * 10; add(i === 0 ? 'smithy' : i === n - 1 && r() < 0.6 ? 'farm' : i === 1 && r() < 0.35 ? 'windmill' : 'house', Math.round(x + Math.cos(a) * d), Math.round(z + Math.sin(a) * d), 6); }
   } else if (kind === 'shipwreck') {
     if (col.h >= SEA + 4) return null;
     add('shipwreck', x, z);
+  } else if (kind === 'dock') {
+    if (col.h > SEA + 2) return null;
+    add('dock', x, z);
   } else add(kind, x, z);
   return parts.length ? { kind, x, z, parts } : null;
 }

@@ -60,8 +60,18 @@ export class Inventory {
   clear() { this.slots.fill(null); this.armor = [null, null, null, null]; this.offhand = null; this.onChange(); }
   armorValue() { return this.armor.reduce((a, s) => a + (s ? ITEM[s.k]?.armor?.defense ?? 0 : 0), 0); }
   warmth() { return this.armor.reduce((a, s) => a + (s ? ITEM[s.k]?.armor?.warmth ?? 0 : 0), 0); }
-  toJSON() { return { slots: this.slots, armor: this.armor, offhand: this.offhand, sel: this.sel }; }
-  load(o: any) { if (!o) return; this.slots = (o.slots ?? []).concat(new Array(SLOTS).fill(null)).slice(0, SLOTS); this.armor = o.armor ?? [null, null, null, null]; this.offhand = o.offhand ?? null; this.sel = o.sel ?? 0; this.onChange(); }
+  toJSON() { return { slots: this.slots, armor: this.armor, offhand: this.offhand, sel: this.sel, hidden: this.hidden }; }
+  load(o: any) {
+    if (!o) return;
+    // items from a mod that's been switched off are set aside (they come back if you switch it on again)
+    const known = (st: Stack | null) => (st && ITEM[st.k] ? st : null);
+    this.hidden = (o.slots ?? []).concat(o.hidden ?? []).filter((st: Stack | null) => st && !ITEM[st.k]);
+    this.slots = (o.slots ?? []).map(known).concat(new Array(SLOTS).fill(null)).slice(0, SLOTS);
+    this.armor = (o.armor ?? [null, null, null, null]).map(known); this.offhand = known(o.offhand ?? null); this.sel = o.sel ?? 0;
+    for (const st of [...this.hidden]) if (ITEM[st.k] && this.add(st.k, st.n) === 0) this.hidden = this.hidden.filter(x => x !== st);
+    this.onChange();
+  }
+  hidden: Stack[] = [];
 }
 export function matches(itemKey: string, want: string) {
   if (!want.startsWith('#')) return itemKey === want;

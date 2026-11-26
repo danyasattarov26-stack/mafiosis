@@ -272,4 +272,5 @@ R('wooden_shield', 1, { '#planks': 5, iron_nugget: 1 }, 'workbench'); R('iron_sh
 R('arrow', 4, { stick: 1, flint: 1, string: 1 }, 'workbench'); R('arrow', 6, { stick: 2, iron_nugget: 1, feather: 2 }, 'workbench');
 R('mushroom_soup', 1, { mushroom: 3, clean_water: 1 }, 'campfire'); R('carrot_soup', 1, { carrot: 3, clean_water: 1 }, 'campfire');
 R('pumpkin_pie', 1, { pumpkin: 1, flour: 1 }, 'campfire'); R('apple_pie', 1, { apple: 3, flour: 1 }, 'campfire'); R('golden_apple', 1, { apple: 1, gold_nugget: 8 }, 'workbench');
-R('seeds', 4, { pumpkin: 1 }); R('string', 2, { cobweb: 1 }); R('leather', 1, { rotten_flesh: 4, salt: 1 }, 'workbench');
+R('seeds', 4, { pumpkin: 1 }); R('designer_table', 1, { workbench: 1, red_dye: 1, blue_dye: 1, yellow_dye: 1, paper: 2 }, 'workbench');
+R('terracotta_orange', 4, { terracotta: 4, orange_dye: 1 }, 'workbench'); R('terracotta_yellow', 4, { terracotta: 4, yellow_dye: 1 }, 'workbench'); R('terracotta_brown', 4, { terracotta: 4, black_dye: 1, red_dye: 1 }, 'workbench'); R('string', 2, { cobweb: 1 }); R('leather', 1, { rotten_flesh: 4, salt: 1 }, 'workbench');

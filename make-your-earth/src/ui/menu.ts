@@ -5,6 +5,7 @@ import { profile, saveProfile, friends, saveFriends, inbox, cleanName, newCode, 
 import { FLAGS } from '../monetization/flags';
 import { sound } from '../audio/audio';
 import type { SaveData } from '../game/game';
+import { officialMods, enabledMods, setEnabled, localMods, loaded, failed } from '../mods/mods';
 
 export type PlayChoice = { mode: 'single' | 'host'; save: SaveData; invite?: string[] } | { mode: 'join'; code: string };
 const $ = <T extends HTMLElement = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T;
@@ -42,7 +43,7 @@ export class Menu {
     this.root.innerHTML = `
       <header><div class="brand"><h1>${t('title')}</h1><p>${t('tagline')}</p></div>
         <div class="lang"><button data-lang="en" class="${lang() === 'en' ? 'on' : ''}">EN</button><button data-lang="pt-PT" class="${lang() === 'pt-PT' ? 'on' : ''}">PT</button></div></header>
-      <nav>${['play', 'friends', 'settings', 'credits'].map(k => `<button data-tab="${k}" class="${this.tab === k ? 'on' : ''}">${t(('tab.' + k) as any)}</button>`).join('')}</nav>
+      <nav>${['play', 'friends', 'mods', 'settings', 'credits'].map(k => `<button data-tab="${k}" class="${this.tab === k ? 'on' : ''}">${t(('tab.' + k) as any)}</button>`).join('')}</nav>
       <section class="body"></section>
       <footer>${FLAGS.support ? `<button class="btn ghost">${t('misc.support')}</button>` : ''}<small>${t('misc.version', { v: __BUILD__ })}</small></footer>`;
     this.root.querySelectorAll<HTMLElement>('[data-lang]').forEach(b => b.onclick = () => { setLang(b.dataset.lang as any); sound.play('click'); });
@@ -52,6 +53,24 @@ export class Menu {
     if (this.tab === 'friends') this.renderFriends(body, p);
     if (this.tab === 'settings') this.renderSettings(body);
     if (this.tab === 'credits') this.renderCredits(body);
+    if (this.tab === 'mods') this.renderMods(body);
+  }
+
+  /** official mods from the game's website: switch them on or off (the page reloads to apply) */
+  private async renderMods(body: HTMLElement) {
+    body.innerHTML = `<div class="card"><p class="muted">${t('mods.loading')}</p></div>`;
+    const list = [...(await officialMods()), ...localMods()], on = new Set(enabledMods());
+    if (this.tab !== 'mods') return;
+    const name = (m: any) => (lang() === 'pt-PT' && m.pt ? m.pt : m.name), desc = (m: any) => (lang() === 'pt-PT' && m.descPt ? m.descPt : m.description);
+    const status = (id: string) => failed.some(f => f.id === id) ? `<em class="bad">${t('mods.error')}</em>` : loaded.some(l => l.id === id) ? `<em class="good">${t('mods.running')}</em>` : '';
+    body.innerHTML = `<div class="card mods"><p>${t('mods.intro')}</p>
+      ${list.map(m => `<label class="modrow"><div><b>${esc(name(m))}</b> <small>v${esc(m.version)}${m.local ? ' · ' + t('mods.local') : ''}</small> ${status(m.id)}<p>${esc(desc(m) ?? '')}</p></div>
+        <input type="checkbox" data-mod="${esc(m.id)}" ${on.has(m.id) ? 'checked' : ''}></label>`).join('') || `<p class="muted">${t('mods.none')}</p>`}
+      <button class="btn big" data-apply hidden>${t('mods.apply')}</button>
+      <p class="muted">${t('mods.howto')}</p></div>`;
+    const apply = body.querySelector<HTMLElement>('[data-apply]')!;
+    body.querySelectorAll<HTMLInputElement>('[data-mod]').forEach(c => c.onchange = () => { setEnabled(c.dataset.mod!, c.checked); apply.hidden = false; sound.play('click'); });
+    apply.onclick = () => location.reload();
   }
 
   private renderPlay(body: HTMLElement) {

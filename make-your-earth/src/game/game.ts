@@ -12,6 +12,7 @@ import { Input } from './input';
 import { Inventory, type Stack } from './inventory';
 import { Animals, loadModel, type Beast, type PetSave } from './animals';
 import { Projectiles } from './projectiles';
+import { MOD_BLOCKS, runHooks, modIds } from '../mods/mods';
 import { newChest, newFurnace, posKey, tickFurnace, contents, type Container } from './containers';
 import { BLOCKS, B } from '../shared/blocks';
 import { ITEM } from '../shared/items';
@@ -52,7 +53,7 @@ export const randomName = (r = Math.random) => `${FIRST[Math.floor(r() * FIRST.l
 
 export interface Grave { id: string; x: number; y: number; z: number; owner: string; name: string; items: Stack[]; at: number }
 export interface Remote { id: string; name: string; look: number; obj: THREE.Group; mixer: THREE.AnimationMixer | null; actions: Record<string, THREE.AnimationAction>; cur: string; pos: THREE.Vector3; yaw: number; anim: string; downed: boolean; label: THREE.Sprite; seen: number }
-export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
+export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
 
 export class Game {
   scene = new THREE.Scene();
@@ -96,7 +97,8 @@ export class Game {
     this.world.loadEdits(save.edits);
     save.customBlocks = save.customBlocks ?? [];
     for (const c of save.customBlocks) this.paintCustom(c);
-    if (!(save as any).guest) for (const c of library()) if (!save.customBlocks.some(x => x.key === c.key) && this.paintCustom(c)) save.customBlocks.push(c);
+    if (!(save as any).guest) for (const c of [...MOD_BLOCKS, ...library()]) if (!save.customBlocks.some(x => x.key === c.key) && this.paintCustom(c)) save.customBlocks.push(c);
+    save.mods = modIds();
     this.world.syncTables(this.baseBlocks);
     this.graves = save.graves ?? []; this.explored = new Set(save.explored ?? []); this.waypoints = save.waypoints ?? [];
     this.time = save.time ?? DAY * 0.3; this.day = Math.floor(this.time / DAY) + 1;
@@ -177,7 +179,7 @@ export class Game {
   onContainer?: (key: string) => void;          // a chest or furnace you have open changed
   private furnT = 0; private contSendT = 0; private cropT = 0; private bowCd = 0; private dirtyCont = new Set<string>();
   shake = 0; redFlash = 0; baseBlocks = 0; god = false; tilt = 0;
-  private hurtAcc = 0; private hurtCd = 0;
+  private hurtAcc = 0; private hurtCd = 0; private started = false; private freshLife = false;
   /** the "ouch": red screen, a shake and a tilt of the head, a grunt and a thud */
   hurtFx(amount: number) {
     this.redFlash = Math.min(0.9, 0.5 + amount / 25);
@@ -222,6 +224,7 @@ export class Game {
       this.player.pos.set(s.x, s.y, s.z);
       this.player.name = settings.name || randomName(r); this.look = Math.floor(r() * LOOKS.length);
       this.inv.add('stone_axe', 1);                   // you wake up holding only an axe
+      this.freshLife = true;
     }
   }
   playerJSON() { const p = this.player; return { pos: [p.pos.x, p.pos.y, p.pos.z], yaw: p.yaw, pitch: p.pitch, stats: p.stats, inv: this.inv.toJSON(), name: p.name, look: this.look, bed: this.bed }; }
@@ -250,6 +253,8 @@ export class Game {
         const inside = this.world.get(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(p.pos.z));
         if ((p.pos.y < top + 1 && !this.bed) || (inside > 0 && BLOCKS[inside].solid !== false)) p.pos.y = top + 1.02;
         this.ready = true; this.onChange();
+        if (!this.started) { this.started = true; runHooks('start', this); }
+        if (this.freshLife) { this.freshLife = false; runHooks('newLife', this); }
       }
       this.updateCamera(dt);
       return;
@@ -259,6 +264,7 @@ export class Game {
       else p.update(dt, this.world, inp, settings.sensitivity, settings.invertY);
       this.interact(dt);
     }
+    if (!this.paused) runHooks('tick', this, dt);
     this.envT -= dt;
     if (this.envT <= 0) { this.envT = 0.5; this.sampleEnvironment(); }
     p.tickStats(dt, this.ambient, this.inv.warmth() + (this.nearFire ? 3 : 0), !!(inp.move.x || inp.move.z));
@@ -370,6 +376,7 @@ export class Game {
   hitAnimal(beast: any, dmg: number, from: THREE.Vector3, to: 'me' | string = 'me', knock = 1) {
     const drops = this.animals.damage(beast, dmg, from, knock);
     if (drops) {
+      runHooks('kill', this, { key: beast.def.key, x: beast.pos.x, y: beast.pos.y, z: beast.pos.z, by: to });
       if (to === 'me') { for (const [k, n] of drops) this.give(k, n); this.toast(drops.map(([k, n]) => `+${n} ${nm(ITEM[k])}`).join(', '), 'good'); }
       else this.giveTo?.(to, drops);
     }
@@ -705,6 +712,7 @@ export class Game {
       if (bd.key === 'pumpkin' && Math.random() < 0.3) this.give('seeds', 1);
     } else if (bd.tool === 'pickaxe') this.toast(t('hud.need'));
     if (held?.tool) this.inv.wear(1);
+    if (tierOk && !needsTool) runHooks('blockBreak', this, { x, y, z, key: bd.key, tool: held?.key ?? null });
     this.spray(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), this.blockColor(id), 14);
     sound.play(bd.tool === 'axe' ? 'wood_break' : 'break', { vol: 0.6 });
     // things standing on it fall (plants, torches)
@@ -856,7 +864,7 @@ export class Game {
     p.stats = { health: 100, hunger: 80, thirst: 80, stamina: 100, temp: 37, sick: 0 };
     p.name = randomName(); this.look = Math.floor(r() * LOOKS.length);
     p.dead = false; this.ready = false;
-    this.inv.add('stone_axe', 1);
+    this.inv.add('stone_axe', 1); this.freshLife = true;
     this.onChange(); this.save();
     return p.name;
   }

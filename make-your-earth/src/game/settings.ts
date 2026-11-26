@@ -14,7 +14,7 @@ export const PRESETS: Record<Preset, Pick<Settings, 'render' | 'sim' | 'shadows'
 };
 export const DEFAULT_KEYS: Record<string, string> = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sprint: 'ShiftLeft', crouch: 'KeyC',
-  inventory: 'KeyE', map: 'KeyM', blockmaker: 'KeyB', rotate: 'KeyR', admin: 'F2', chat: 'KeyT', drop: 'KeyQ', eat: 'KeyF', menu: 'Escape',
+  inventory: 'KeyE', map: 'KeyM', blockmaker: 'KeyB', rotate: 'KeyR', chat: 'KeyT', drop: 'KeyQ', eat: 'KeyF', menu: 'Escape',
 };
 export const isTouch = () => matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1 && innerWidth < 1100;
 

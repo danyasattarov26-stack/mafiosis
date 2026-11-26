@@ -11,14 +11,16 @@ import { TILES, BLOCK_TILES, ATLAS_COLS, ATLAS_ROWS } from '../world/tiles';
 export type BlockFunction = 'solid' | 'light' | 'glass' | 'door' | 'ladder' | 'conveyor' | 'flammable' | 'explosive' | 'storage';
 export const FUNCTIONS: BlockFunction[] = ['solid', 'light', 'glass', 'door', 'ladder', 'conveyor', 'flammable', 'explosive', 'storage'];
 export interface CustomBlock {
-  key: string; name: string; author: string;
+  key: string; name: string; pt?: string; author: string;
   faces: string[];                 // six faces (+x, −x, top, bottom, +z, −z), each 16×16 RGBA as base64
   fn: BlockFunction; recipe: Record<string, number>; at: Station; n: number; created: number;
 }
 export interface Extra { climb?: boolean; conveyor?: boolean; explosive?: boolean; storage?: boolean }
 export const EXTRA: Record<number, Extra> = {};
 
-const BASE = { blocks: BLOCKS.length, items: ITEMS.length, recipes: RECIPES.length, tiles: TILES.length, blockTiles: BLOCK_TILES.length };
+let BASE = { blocks: BLOCKS.length, items: ITEMS.length, recipes: RECIPES.length, tiles: TILES.length, blockTiles: BLOCK_TILES.length };
+/** after mods add items and recipes: keep them when a world resets its custom blocks */
+export function rebaseCustom() { BASE = { ...BASE, items: ITEMS.length, recipes: RECIPES.length }; }
 export const MAX_BLOCKS = 255;
 export const customIds: number[] = [];
 
@@ -39,20 +41,22 @@ export function registerCustom(c: CustomBlock): { id: number; tiles: number[] } 
   const id = BLOCKS.length;
   const tiles = [0, 1, 2, 3, 4, 5].map(f => { TILES.push({ p: 'noise', c: ['#000'] }); return TILES.length - 1; });
   const def: BlockDef = {
-    key: c.key, en: c.name, pt: c.name, top: { p: 'noise', c: avgColor(c.faces[2]) }, side: { p: 'noise', c: avgColor(c.faces[0]) },
+    key: c.key, en: c.name, pt: c.pt ?? c.name, top: { p: 'noise', c: avgColor(c.faces[2]) }, side: { p: 'noise', c: avgColor(c.faces[0]) },
     hard: c.fn === 'explosive' ? 0.3 : 1.2, tool: 'hand', render: c.fn === 'ladder' ? 'cross' : 'cube',
-    solid: !(c.fn === 'door' || c.fn === 'ladder'), transparent: c.fn === 'glass' || c.fn === 'ladder',
+    // any see-through pixel makes it a transparent block, so the faces behind it still get drawn
+    solid: !(c.fn === 'door' || c.fn === 'ladder'), transparent: c.fn === 'glass' || c.fn === 'ladder' || c.faces.some(hasHoles),
     light: c.fn === 'light' ? 14 : undefined, flammable: c.fn === 'flammable' || c.fn === 'explosive' ? true : undefined,
   };
   BLOCKS.push(def); BLOCK_ID[c.key] = id; (BLOCK_TILES as number[][]).push(tiles);
   EXTRA[id] = { climb: c.fn === 'ladder', conveyor: c.fn === 'conveyor', explosive: c.fn === 'explosive', storage: c.fn === 'storage' };
-  const item = { key: c.key, en: c.name, pt: c.name, kind: 'block' as const, color: def.side!.c[0], color2: def.top.c[0], stack: 64, block: id, tags: ['custom'] };
+  const item = { key: c.key, en: c.name, pt: c.pt ?? c.name, kind: 'block' as const, color: def.side!.c[0], color2: def.top.c[0], stack: 64, block: id, tags: ['custom'] };
   ITEMS.push(item); ITEM[c.key] = item;
   const r: Recipe = { out: c.key, n: Math.max(1, Math.min(16, c.n | 0)), in: c.recipe, at: c.at };
   if (Object.keys(c.recipe).length) RECIPES.push(r);
   customIds.push(id);
   return { id, tiles };
 }
+function hasHoles(b64: string) { const px = facePixels(b64); for (let i = 3; i < px.length; i += 4) if (px[i] < 250) return true; return false; }
 function avgColor(b64: string) {
   const px = facePixels(b64); let r = 0, g = 0, b = 0, n = 0;
   for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 10) { r += px[i]; g += px[i + 1]; b += px[i + 2]; n++; }

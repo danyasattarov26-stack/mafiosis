@@ -61,3 +61,16 @@ describe('furnace', () => {
     expect(contents(c)).toEqual([{ k: 'diamond', n: 2 }]);
   });
 });
+
+import { registerCustom, resetCustom, encodeFace } from '../src/shared/custom';
+describe('custom blocks', () => {
+  it('a painted block with see-through pixels is transparent, so the ground next to it still draws', () => {
+    resetCustom();
+    const solid = new Uint8ClampedArray(16 * 16 * 4).fill(255), holes = solid.slice(); holes[3] = 0;
+    const mk = (key: string, px: Uint8ClampedArray) => ({ key, name: key, author: 't', faces: new Array(6).fill(encodeFace(px)), fn: 'solid' as const, recipe: {}, at: 'hand' as const, n: 1, created: 0 });
+    const a = registerCustom(mk('cb_solidx', solid))!, b = registerCustom(mk('cb_holesx', holes))!;
+    expect(BLOCKS[a.id].transparent).toBe(false);
+    expect(BLOCKS[b.id].transparent).toBe(true);
+    resetCustom();
+  });
+});

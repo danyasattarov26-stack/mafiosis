@@ -1,0 +1,9 @@
+{
+  "mods": [
+    { "id": "fireflies", "name": "Fireflies", "pt": "Pirilampos", "description": "Glowing fireflies drift around you on warm nights.", "descPt": "Pirilampos brilham à tua volta nas noites quentes.", "version": "1.0.0", "author": "Make Your Earth", "file": "fireflies.js" },
+    { "id": "tasty-foods", "name": "Tasty Foods", "pt": "Comidas Saborosas", "description": "Pizza, sushi, chocolate, cookies and honey toast, with recipes.", "descPt": "Piza, sushi, chocolate, bolachas e torradas com mel, com receitas.", "version": "1.0.0", "author": "Make Your Earth", "file": "tasty-foods.js" },
+    { "id": "gem-blocks", "name": "Gem Blocks", "pt": "Blocos de Gemas", "description": "Ruby, sapphire and amethyst blocks, crystal bricks and a gem lamp.", "descPt": "Blocos de rubi, safira e ametista, tijolos de cristal e um candeeiro de gemas.", "version": "1.0.0", "author": "Make Your Earth", "file": "gem-blocks.js" },
+    { "id": "starter-kit", "name": "Starter Kit", "pt": "Kit Inicial", "description": "Every new life starts with bread, torches, a wooden sword and a water bottle.", "descPt": "Cada nova vida começa com pão, tochas, uma espada de madeira e uma garrafa de água.", "version": "1.0.0", "author": "Make Your Earth", "file": "starter-kit.js" },
+    { "id": "lucky-miner", "name": "Lucky Miner", "pt": "Mineiro Sortudo", "description": "Mining ore sometimes gives a bonus drop, with a sparkle.", "descPt": "Minerar às vezes dá um bónus extra, com brilho.", "version": "1.0.0", "author": "Make Your Earth", "file": "lucky-miner.js" }
+  ]
+}

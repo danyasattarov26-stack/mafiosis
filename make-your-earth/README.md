@@ -34,12 +34,36 @@ Live: https://make-your-earth.vercel.app
 | Q | D-pad down | Drop one item |
 | T | D-pad up | Chat (co-op) |
 | 1–9, wheel | LB / RB | Hotbar |
-| B | — | Block Maker |
+| B | — | Block Maker (stand next to a Designer's Bench) |
 | R | — | Rotate a blueprint while placing it |
-| F2 | — | Admin panel (world owner) |
 | Esc | Start | Pause / cancel a blueprint |
 
 Keys can be rebound in Settings.
+
+## Crafting
+
+Open your bags (E). Put items in the crafting grid (2×2 by hand, 3×3 next to a workbench or another station)
+and the result appears on the right: tap it to craft, Shift-click to craft as many as fit. When the same items
+fit more than one recipe (four planks: sticks or a workbench), ⟳ switches between them. The recipe book below
+the grid fills the grid for you from your bags.
+
+The **Block Maker** needs a **Designer's Bench** (made at a workbench from a workbench, red, blue and yellow dye
+and paper). Use the bench, or press B next to it.
+
+## Admin panel (world owner only)
+
+There's no button for it. Press **F2 three times quickly**, or on a phone **tap the coordinates in the top-left
+corner five times**. The first time you choose a PIN (4–12 digits); after that the PIN is needed every time.
+It's stored on that device only. Friends who join your world can't open it.
+
+The panel has an item picker (search, categories, icons), time and weather, players (kick, ban, mute, teleport,
+give, look at inventory), god mode, and **Mods on this device** for trying a mod before you publish it.
+
+## Mods
+
+Players switch official mods on and off in the **Mods** tab of the main menu. Five come with the game:
+Fireflies, Tasty Foods, Gem Blocks, Starter Kit and Lucky Miner. Only the owner publishes new mods, by adding
+them to `public/mods/` and redeploying. See [MODS.md](MODS.md) for how to write one (or ask Claude to).
 
 ## Survival tips
 

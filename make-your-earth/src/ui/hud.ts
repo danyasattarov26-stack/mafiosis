@@ -7,6 +7,7 @@ import { itemIcon } from '../render/textures';
 import { HOTBAR, SLOTS, ARMOR_SLOTS, type Stack } from '../game/inventory';
 import type { Game } from '../game/game';
 import { sound } from '../audio/audio';
+import { matchGrid, consume, pickIngredients } from '../game/crafting';
 import { CHEST_SLOTS, SMELT_TIME, smeltResult, fuelOf, type Container } from '../game/containers';
 import { builtinBlueprints, myBlueprints, saveBlueprint, deleteBlueprint, type Blueprint } from '../game/blueprints';
 
@@ -20,6 +21,8 @@ export class Hud {
   onAdmin: () => void = () => {};
   station = 'hand';
   container: string | null = null;          // the chest or furnace that's open (its block position)
+  grid: (Stack | null)[] = new Array(9).fill(null);   // the crafting grid (2×2 by hand, 3×3 at a station)
+  private pick = 0;                           // which result, when the grid fits several recipes
   private cursor: Stack | null = null;      // item held on the mouse while moving stacks
   private recipeFilter = ''; private onlyMakeable = false;
   onQuit: () => void = () => {};
@@ -131,6 +134,7 @@ export class Hud {
   close() {
     if (this.cursor) { this.game.inv.add(this.cursor.k, this.cursor.n); this.cursor = null; this.renderCursor(); }
     if (this.container) { if (this.cont()?.kind === 'chest') sound.play('chest_close', { vol: 0.6 }); this.container = null; }
+    this.returnGrid();
     this.open = null; $('.panel', this.root).hidden = true; this.root.classList.remove('panel-open');
     this.game.paused = false;
   }
@@ -163,6 +167,42 @@ export class Hud {
     if (d.food?.sick) lines.push('⚠ ' + t('inv.risky')); if (d.food?.cure) lines.push('✚ ' + t('inv.cures'));
     return esc(lines.join('\n'));
   }
+  /** put everything in the crafting grid back in your bags */
+  private returnGrid() {
+    const g = this.game;
+    for (let i = 0; i < 9; i++) { const s = this.grid[i]; if (!s) continue; const left = g.inv.add(s.k, s.n); if (left) g.dropItem(s.k, left, g.player.pos.clone().setY(g.player.pos.y + 1), false); this.grid[i] = null; }
+  }
+  private gridSize() { const st = this.game.stations; return this.station !== 'hand' || [...st].some(s => s !== 'hand' && s !== 'furnace') ? 3 : 2; }
+  /** recipe book: fill the grid with what a recipe needs from your bags */
+  private fillGrid(r: Recipe) {
+    const g = this.game, inv = g.inv, size = this.gridSize();
+    this.returnGrid(); this.pick = 0;
+    const parts = pickIngredients(r, k => inv.count(k), () => inv.all());
+    if (parts.length > size * size) { this.toast(t('inv.needBigger'), 'bad'); return; }
+    let slot = 0, missing = false;
+    for (const p of parts) {
+      const take = Math.min(p.n, inv.count(p.k));
+      if (take < p.n) missing = true;
+      if (take > 0) { inv.remove(p.k, take); const idx = size === 3 ? slot : [0, 1, 3, 4][slot]; this.grid[idx] = { k: p.k, n: take }; }
+      slot++;
+    }
+    if (missing) this.toast(t('inv.missing'), 'bad');
+  }
+  private craftHTML(slot: (s: Stack | null, id: string, extra?: string) => string) {
+    const size = this.gridSize(), stations = new Set(this.game.stations); if (this.station !== 'hand') stations.add(this.station);
+    if (size === 2) for (const i of [2, 5, 6, 7, 8]) if (this.grid[i]) { const s = this.grid[i]!; this.grid[i] = null; this.game.inv.add(s.k, s.n); }
+    const ms = matchGrid(this.grid, stations), m = ms[this.pick % Math.max(1, ms.length)];
+    const cells = size === 3 ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [0, 1, 3, 4];
+    return `<div class="craft">
+      <div class="cgrid s${size}">${cells.map(i => slot(this.grid[i], 'g' + i)).join('')}</div>
+      <div class="carrow">➜</div>
+      <div class="cout">
+        <div class="slot big result ${m ? 'ok' : ''}" data-out title="${m ? this.tooltip(m.r.out) : ''}">${m ? this.stackHTML({ k: m.r.out, n: m.r.n }) : ''}</div>
+        ${ms.length > 1 ? `<button class="btn small" data-nextout>⟳ ${this.pick % ms.length + 1}/${ms.length}</button>` : ''}
+        ${m && m.times > 1 ? `<small>×${m.times}</small>` : ''}
+      </div></div>
+      <p class="hint">${t('inv.gridHint')}</p>`;
+  }
   renderInventory() {
     const g = this.game, inv = g.inv, panel = $('.panel', this.root);
     const slot = (s: Stack | null, id: string, extra = '') => `<div class="slot ${extra}" data-slot="${id}" title="${s ? this.tooltip(s.k) : ''}">${this.stackHTML(s)}</div>`;
@@ -178,7 +218,7 @@ export class Hud {
     panel.innerHTML = `
       <div class="inv">
         <div class="col left">
-          <h3>${t('inv.title')} <button class="btn small" data-bm>🧱 ${t('bm.open')}</button></h3>
+          <h3>${t('inv.title')} ${g.stations.has('designer') ? `<button class="btn small" data-bm>🧱 ${t('bm.open')}</button>` : ''}</h3>
           <div class="armor">${ARMOR_SLOTS.map((a, i) => slot(inv.armor[i], 'a' + i, 'armor-' + a)).join('')}${slot(inv.offhand, 'off', 'offhand')}</div>
           <div class="grid main">${inv.slots.slice(HOTBAR, SLOTS).map((s, i) => slot(s, String(HOTBAR + i))).join('')}</div>
           <div class="grid hot">${inv.slots.slice(0, HOTBAR).map((s, i) => slot(s, String(i), i === inv.sel ? 'sel' : '')).join('')}</div>
@@ -186,6 +226,8 @@ export class Hud {
         </div>
         ${this.cont() ? `<div class="col right">${this.containerHTML(slot)}</div>` : `<div class="col right">
           <h3>${t('inv.crafting')} · <span class="st">${[...stations].map(s => t(('inv.station.' + s) as any)).join(' · ')}</span></h3>
+          ${this.craftHTML(slot)}
+          <h4 class="bookh">📖 ${t('inv.book')}</h4>
           <div class="rtools"><input class="rsearch" placeholder="${t('inv.search')}" value="${esc(this.recipeFilter)}"><label><input type="checkbox" class="rmake" ${this.onlyMakeable ? 'checked' : ''}> ${t('inv.canMake')}</label></div>
           <div class="recipes">${shown.map((r, i) => this.recipeHTML(r, i, inv.canCraft(r))).join('')}</div>
           ${nextStation ? `<p class="hint">${t('inv.nearStation', { s: nextStation })}</p>` : ''}
@@ -193,15 +235,29 @@ export class Hud {
         <button class="close">✕</button>
       </div>`;
     $('.close', panel).onclick = () => this.close();
-    panel.querySelector<HTMLElement>('[data-bm]')!.onclick = () => { this.close(); this.onBlockMaker(); };
+    const bm = panel.querySelector<HTMLElement>('[data-bm]'); if (bm) bm.onclick = () => { this.close(); this.onBlockMaker(); };
+    const out = panel.querySelector<HTMLElement>('[data-out]');
+    if (out) out.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const st = new Set(g.stations); if (this.station !== 'hand') st.add(this.station);
+      const ms = matchGrid(this.grid, st), m = ms[this.pick % Math.max(1, ms.length)]; if (!m) return;
+      let made = 0;
+      const batches = e.shiftKey ? m.times : 1;
+      for (let b = 0; b < batches; b++) {
+        if (!consume(this.grid, m.r)) break;
+        const left = inv.add(m.r.out, m.r.n); if (left) g.dropItem(m.r.out, left, g.player.pos.clone().setY(g.player.pos.y + 1), false);
+        made++;
+      }
+      if (made) { sound.play('craft', { vol: 0.5 }); this.toast(t('inv.made', { n: made * m.r.n, item: nm(ITEM[m.r.out]) }), 'good'); }
+      this.renderInventory(); this.renderHotbar();
+    });
+    const nx = panel.querySelector<HTMLElement>('[data-nextout]'); if (nx) nx.onclick = () => { this.pick++; this.renderInventory(); };
     const search = panel.querySelector<HTMLInputElement>('.rsearch');
     if (search) search.oninput = () => { this.recipeFilter = search.value; const pos = search.selectionStart; this.renderInventory(); const s2 = $<HTMLInputElement>('.rsearch', panel); s2.focus(); s2.setSelectionRange(pos, pos); };
     const rmake = panel.querySelector<HTMLInputElement>('.rmake'); if (rmake) rmake.onchange = e => { this.onlyMakeable = (e.target as HTMLInputElement).checked; this.renderInventory(); };
-    panel.querySelectorAll<HTMLElement>('[data-recipe]').forEach(el => el.addEventListener('click', e => {
-      const r = shown[+el.dataset.recipe!]; const n = (e as MouseEvent).shiftKey ? 64 : 1;
-      const made = inv.craft(r, n);
-      if (made) { sound.play('craft', { vol: 0.5 }); this.toast(t('inv.made', { n: made * r.n, item: nm(ITEM[r.out]) }), 'good'); const of = (inv as any).overflow; if (of) { g.dropItem(of.k, of.n, g.player.pos.clone().setY(g.player.pos.y + 1), false); (inv as any).overflow = null; } }
-      else this.toast(t('inv.missing'), 'bad');
+    // recipe book: tap a recipe to lay its ingredients in the grid, then take the result
+    panel.querySelectorAll<HTMLElement>('[data-recipe]').forEach(el => el.addEventListener('click', () => {
+      this.fillGrid(shown[+el.dataset.recipe!]); sound.play('click', { vol: 0.3 });
       this.renderInventory(); this.renderHotbar();
     }));
     panel.querySelectorAll<HTMLElement>('[data-slot]').forEach(el => {
@@ -221,6 +277,7 @@ export class Hud {
   }
   private getSlot(id: string): Stack | null {
     const inv = this.game.inv, c = this.cont();
+    if (id[0] === 'g') return this.grid[+id.slice(1)];
     if (id === 'off') return inv.offhand; if (id[0] === 'a') return inv.armor[+id.slice(1)];
     if (c?.kind === 'chest' && id[0] === 'c') return c.slots[+id.slice(1)];
     if (c?.kind === 'furnace' && id[0] === 'f') return id === 'fin' ? c.input : id === 'ffu' ? c.fuel : c.out;
@@ -228,6 +285,7 @@ export class Hud {
   }
   private setSlot(id: string, s: Stack | null) {
     const inv = this.game.inv, c = this.cont();
+    if (id[0] === 'g') { this.grid[+id.slice(1)] = s; this.pick = 0; return; }
     if (id === 'off') inv.offhand = s; else if (id[0] === 'a') inv.armor[+id.slice(1)] = s;
     else if (c?.kind === 'chest' && id[0] === 'c') c.slots[+id.slice(1)] = s;
     else if (c?.kind === 'furnace' && id[0] === 'f') { if (id === 'fin') c.input = s; else if (id === 'ffu') c.fuel = s; else c.out = s; }
@@ -341,11 +399,9 @@ export class Hud {
     panel.innerHTML = `<div class="pause"><h2>${t('hud.paused')}</h2>
       <button class="btn big" data-a="resume">${t('hud.resume')}</button>
       <button class="btn" data-a="settings">${t('tab.settings')}</button>
-      ${this.game.isGuest ? '' : `<button class="btn" data-a="admin">🛠 ${t('admin.open')}</button>`}
       <button class="btn" data-a="quit">${t('hud.saveQuit')}</button></div>`;
     panel.querySelector<HTMLElement>('[data-a=resume]')!.onclick = () => { this.close(); this.game.input.requestLock(); };
     panel.querySelector<HTMLElement>('[data-a=settings]')!.onclick = () => onSettings();
-    const ad = panel.querySelector<HTMLElement>('[data-a=admin]'); if (ad) ad.onclick = () => { this.close(); this.onAdmin(); };
     panel.querySelector<HTMLElement>('[data-a=quit]')!.onclick = () => this.onQuit();
   }
   showDeath(newName: string | null, grave: { x: number; z: number } | null) {

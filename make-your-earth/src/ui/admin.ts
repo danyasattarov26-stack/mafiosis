@@ -9,17 +9,28 @@ import { itemIcon } from '../render/textures';
 import { DAY, type Game } from '../game/game';
 import type { Session } from '../net/session';
 import { sound } from '../audio/audio';
+import { localMods, saveLocalMod, removeLocalMod } from '../mods/mods';
+
+const CATS: [string, (k: string) => boolean][] = [
+  ['all', () => true], ['block', k => ITEM[k].kind === 'block'], ['tool', k => ITEM[k].kind === 'tool' || ITEM[k].kind === 'weapon' || !!ITEM[k].shield],
+  ['armor', k => ITEM[k].kind === 'armor'], ['food', k => ['food', 'drink', 'medicine'].includes(ITEM[k].kind)], ['material', k => ITEM[k].kind === 'material' || ITEM[k].kind === 'misc'],
+];
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class Admin {
   root: HTMLElement;
   private invView: { name: string; items: { k: string; n: number }[] } | null = null;
+  private sel = 'torch'; private cat = 'all'; private q = ''; private amount = 16; private to = 'me';
   constructor(private game: Game, private session: Session | null, private onClose: () => void) {
     this.root = document.createElement('div'); this.root.className = 'overlay admin-wrap';
     document.body.appendChild(this.root);
     if (session) session.onInventory = (name, items) => { this.invView = { name, items }; this.render(); };
     this.render();
+  }
+  private pickList() {
+    const test = CATS.find(c => c[0] === this.cat)![1], qq = this.q.trim().toLowerCase();
+    return ITEMS.filter(i => test(i.key) && (!qq || nm(i).toLowerCase().includes(qq) || i.key.includes(qq) || i.en.toLowerCase().includes(qq))).slice(0, 240);
   }
   close() { this.root.remove(); if (this.session) this.session.onInventory = () => {}; this.onClose(); }
 
@@ -41,14 +52,22 @@ export class Admin {
           ${this.invView ? `<h4>${t('admin.invOf', { name: this.invView.name })}</h4><div class="ainv">${this.invView.items.map(i => `<span title="${esc(nm(ITEM[i.k]))}"><img src="${itemIcon(i.k)}" alt="">${i.n}</span>`).join('') || '—'}</div>` : ''}
         </div>
         <div class="card"><h4>${t('admin.give')}</h4>
-          <datalist id="adm-items">${ITEMS.map(i => `<option value="${esc(nm(i))}">`).join('')}</datalist>
-          <div class="row"><input class="aitem" list="adm-items" placeholder="${t('admin.item')}"><input class="aamt" type="number" min="1" max="999" value="16"></div>
-          <div class="row"><span>${t('admin.to')}</span><select class="ato"><option value="me">${t('admin.self')}</option>${peers.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join('')}</select><button class="btn" data-give>${t('admin.give')}</button></div>
+          <div class="picker">
+            <div class="row"><input class="aq" placeholder="🔍 ${t('admin.search')}" value="${esc(this.q)}"></div>
+            <div class="seg cats">${CATS.map(([c]) => `<button data-cat="${c}" class="${this.cat === c ? 'on' : ''}">${t(('admin.cat.' + c) as any)}</button>`).join('')}</div>
+            <div class="pgrid">${this.pickList().map(i => `<button class="pick ${i.key === this.sel ? 'on' : ''}" data-pick="${i.key}" title="${esc(nm(i))}"><img src="${itemIcon(i.key)}" alt=""></button>`).join('')}</div>
+            <div class="row chosen"><img src="${itemIcon(this.sel)}" alt=""><b>${esc(nm(ITEM[this.sel]))}</b><small>${esc(this.sel)}</small></div>
+            <div class="row"><div class="seg">${[1, 16, 64].map(n => `<button data-amt="${n}" class="${this.amount === n ? 'on' : ''}">${n}</button>`).join('')}</div><input class="aamt" type="number" min="1" max="999" value="${this.amount}"></div>
+            <div class="row"><span>${t('admin.to')}</span><select class="ato"><option value="me">${t('admin.self')}</option>${peers.map(([id, name]) => `<option value="${id}" ${this.to === id ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><button class="btn big" data-give>${t('admin.give')}</button></div>
+          </div>
           <h4>${t('admin.time')}</h4><div class="seg">${[['morning', 0.3], ['noon', 0.5], ['evening', 0.76], ['night', 0.0]].map(([k, f]) => `<button data-time="${f}">${t(('admin.' + k) as any)}</button>`).join('')}</div>
           <h4>${t('admin.weather')}</h4><div class="seg">${['clear', 'rain', 'storm'].map(w => `<button data-weather="${w}" class="${g.weather === w ? 'on' : ''}">${t(('admin.' + w) as any)}</button>`).join('')}</div>
           <h4>${t('admin.tools')}</h4>
           <div class="row"><button class="btn" data-heal>${t('admin.heal')}</button><button class="btn" data-clearanimals>${t('admin.clearAnimals')}</button></div>
           <label class="field toggle"><span>${t('admin.god')}</span><input type="checkbox" class="agod" ${g.player.god ? 'checked' : ''}></label>
+          <h4>${t('admin.mods')}</h4><p class="muted">${t('admin.modsHint')}</p>
+          ${localMods().map(m => `<div class="row"><span>🧩 ${esc(m.name)} <small>v${esc(m.version)}</small></span><button class="btn small bad" data-rmmod="${esc(m.id)}">${t('admin.remove')}</button></div>`).join('')}
+          <label class="btn small filebtn">📂 ${t('admin.installMod')}<input type="file" accept=".js,.mjs,text/javascript" class="modfile" hidden></label>
           ${s ? `<h4>${t('admin.broadcast')}</h4><div class="row"><input class="abc" maxlength="200"><button class="btn" data-bc>${t('admin.send')}</button></div>` : ''}
         </div>
       </div></div>`;
@@ -67,12 +86,29 @@ export class Admin {
     on('heal', () => { Object.assign(g.player.stats, { health: 100, hunger: 100, thirst: 100, stamina: 100, temp: 37, sick: 0 }); g.onChange(); });
     on('clearanimals', () => g.animals.clear());
     q<HTMLInputElement>('.agod').onchange = e => { g.player.god = (e.target as HTMLInputElement).checked; };
+    // the item picker: search, categories, pick an icon, choose how many
+    const aq = q<HTMLInputElement>('.aq');
+    aq.oninput = () => { this.q = aq.value; const pos = aq.selectionStart; this.render(); const a2 = q<HTMLInputElement>('.aq'); a2.focus(); a2.setSelectionRange(pos, pos); };
+    on('cat', c => { this.cat = c; this.render(); });
+    on('pick', k => { this.sel = k; this.render(); });
+    on('amt', n => { this.amount = +n; this.render(); });
+    q<HTMLInputElement>('.aamt').onchange = e => { this.amount = Math.max(1, Math.min(999, +(e.target as HTMLInputElement).value || 1)); };
+    q<HTMLSelectElement>('.ato').onchange = e => { this.to = (e.target as HTMLSelectElement).value; };
     q('[data-give]').onclick = () => {
-      const name = q<HTMLInputElement>('.aitem').value.trim().toLowerCase(), n = Math.max(1, Math.min(999, +q<HTMLInputElement>('.aamt').value || 1));
-      const it = ITEMS.find(i => nm(i).toLowerCase() === name || i.key === name); if (!it) return;
-      const to = q<HTMLSelectElement>('.ato').value;
+      const it = ITEM[this.sel]; if (!it) return;
+      const n = this.amount, to = q<HTMLSelectElement>('.ato').value;
       if (to === 'me') g.give(it.key, n); else s?.room.send({ k: 'give', items: [[it.key, Math.min(64 * 9, n)]] }, to);
-      sound.play('pickup');
+      g.toast(`+${n} ${nm(it)}`, 'good'); sound.play('pickup');
+    };
+    // mods on this device only (the owner trying one out before publishing it)
+    on('rmmod', id => { removeLocalMod(id); g.toast(t('admin.modReload')); this.render(); });
+    q<HTMLInputElement>('.modfile').onchange = async e => {
+      const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
+      const code = await f.text();
+      if (!/export\s+default/.test(code)) { g.toast(t('admin.modBad'), 'bad'); return; }
+      const id = 'local-' + f.name.replace(/\.m?js$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
+      saveLocalMod({ id, name: f.name.replace(/\.m?js$/, ''), description: t('admin.localDesc'), version: '0', author: 'owner', file: '', code });
+      g.toast(t('admin.modReload'), 'good'); this.render();
     };
     const bc = this.root.querySelector<HTMLElement>('[data-bc]');
     if (bc) bc.onclick = () => { const v = q<HTMLInputElement>('.abc').value.trim(); if (v) { s!.say('📢 ' + v); q<HTMLInputElement>('.abc').value = ''; } };

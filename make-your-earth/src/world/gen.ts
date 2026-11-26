@@ -10,19 +10,20 @@ import { siteAt, rotate, CELL, type Site } from './structures';
 export const CS = 16, CH = 256, SEA = 62;
 export const idx = (x: number, y: number, z: number) => x + z * CS + y * CS * CS;
 const PLANTS = new Set([B.tall_grass, B.flower_red, B.flower_yellow, B.berry_bush, B.dead_bush, B.fern, B.wheat, B.flower_blue, B.carrot_crop_2, B.potato_crop_2]);
-const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.pine_leaves, B.jungle_leaves, B.acacia_leaves, B.palm_leaves]);
+const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.pine_leaves, B.jungle_leaves, B.acacia_leaves, B.palm_leaves, B.autumn_leaves, B.crimson_leaves, B.vines]);
+const CANYON_BANDS = [B.terracotta, B.terracotta_orange, B.terracotta_yellow, B.terracotta_orange, B.terracotta_white, B.terracotta_red, B.terracotta_brown, B.terracotta_orange];
 const smooth = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export interface Column { h: number; biome: number; river: number }
 
 export class TerrainGen {
   private nc: Noise; private ne: Noise; private nm: Noise; private nr: Noise; private nt: Noise; private nh: Noise; private nriv: Noise; private ncave: Noise; private ncave2: Noise;
-  private nw1: Noise; private nw2: Noise; private ncav: Noise; private nrav: Noise; private nravm: Noise; private nlake: Noise;
+  private nw1: Noise; private nw2: Noise; private ncav: Noise; private nrav: Noise; private nravm: Noise; private nlake: Noise; private nrare: Noise; private nmesa: Noise;
   private B = BIOME_ID;
   constructor(public seed: number) {
     this.nc = new Noise(seed); this.ne = new Noise(seed + 1); this.nm = new Noise(seed + 2); this.nr = new Noise(seed + 3);
     this.nt = new Noise(seed + 4); this.nh = new Noise(seed + 5); this.nriv = new Noise(seed + 6); this.ncave = new Noise(seed + 7); this.ncave2 = new Noise(seed + 8);
-    this.nw1 = new Noise(seed + 21); this.nw2 = new Noise(seed + 22); this.ncav = new Noise(seed + 23); this.nrav = new Noise(seed + 24); this.nravm = new Noise(seed + 25); this.nlake = new Noise(seed + 26);
+    this.nw1 = new Noise(seed + 21); this.nw2 = new Noise(seed + 22); this.ncav = new Noise(seed + 23); this.nrav = new Noise(seed + 24); this.nravm = new Noise(seed + 25); this.nlake = new Noise(seed + 26); this.nrare = new Noise(seed + 27); this.nmesa = new Noise(seed + 28);
   }
 
   /** ravines: long, narrow, deep cracks across dry land. Returns the lowest carved y (or 999) and how central we are (0..1). */
@@ -58,16 +59,30 @@ export class TerrainGen {
     // climate
     const temp = this.nt.fbm(x / 2300 + 300, z / 2300, 3) - Math.max(0, hi - SEA - 20) * 0.004;
     const hum = this.nh.fbm(x / 1900, z / 1900 - 400, 3);
-    let biome: number;
+    const rare = this.nrare.fbm(x / 900 + 70, z / 900 - 30, 2);      // picks the rarer biomes inside the common ones
+    let biome: number, h2 = hi;
     if (hi < SEA - 1 && !river) biome = this.B.ocean;
     else if (temp < -0.27) biome = this.B.tundra;
-    else if (hi > SEA + 42 || (mMask > 0.6 && hi > SEA + 26)) biome = this.B.mountains;
-    else if (hi <= SEA + 2 && !river) biome = this.B.beach;
-    else if (temp > 0.1 && hum < -0.06) biome = this.B.desert;
-    else if (temp > 0.04 && hum < 0.12) biome = this.B.savanna;
+    else if (hi > SEA + 42 || (mMask > 0.6 && hi > SEA + 26)) biome = rare > 0.3 && hi < SEA + 75 && !river ? this.B.volcanic : this.B.mountains;
+    else if (hi <= SEA + 2 && !river) biome = hum > 0.22 && temp > -0.1 && temp < 0.1 ? this.B.swamp : this.B.beach;
+    else if (temp > 0.1 && hum < -0.06) biome = rare > 0.28 ? this.B.canyon : this.B.desert;
+    else if (temp > 0.04 && hum < 0.12) biome = rare > 0.38 ? this.B.canyon : this.B.savanna;
     else if (temp > 0.02 && hum >= 0.12) biome = this.B.jungle;
-    else biome = this.B.forest;
-    return { h: hi, biome, river };
+    else if (hum > 0.2 && hi < SEA + 12) biome = this.B.swamp;
+    else if (temp < -0.13) biome = this.B.taiga;
+    else biome = rare > 0.22 ? this.B.autumn : this.B.forest;
+    if (!river) {
+      if (biome === this.B.swamp) {
+        // flat and soggy: pools of water between low mounds
+        const w = this.nlake.n2(x / 18, z / 18);
+        h2 = SEA + (w > 0.25 ? 1 : w < -0.2 ? -1 : 0);
+      } else if (biome === this.B.canyon) {
+        // stepped mesas with flat tops
+        const m = this.nmesa.fbm(x / 110, z / 110, 3), edge = Math.min(1, (rare - 0.28) * 8);
+        h2 = Math.round(hi + Math.max(0, edge) * (Math.floor(Math.max(0, m + 0.15) * 45 / 6) * 6));
+      } else if (biome === this.B.volcanic) h2 = hi + Math.round(Math.max(0, rare - 0.3) * 60);
+    }
+    return { h: h2, biome, river };
   }
 
   generate(cx: number, cz: number): Uint8Array {
@@ -94,6 +109,9 @@ export class TerrainGen {
         // mountains: snow caps, bare stone faces
         if (col.biome === this.B.mountains && y === h && h > SEA + 62) id = B.snow;
         if (col.biome === this.B.mountains && y === h && h <= SEA + 62 && h < SEA + 48) id = B.grass;
+        if (col.biome === this.B.canyon && y > h - 40 && y <= h && id !== B.water) id = y === h ? B.red_sand : CANYON_BANDS[((y + (hash2(wx >> 3, wz >> 3, seed) * 2 | 0)) >> 1) % CANYON_BANDS.length];
+        if (col.biome === this.B.volcanic && y === h && hash2(wx, wz, seed + 51) < 0.05) id = B.magma_rock;
+        if (col.biome === this.B.volcanic && y === h && this.nlake.n2(wx / 14, wz / 14) > 0.55) id = B.lava;
         if (id === B.stone) id = this.ore(wx, y, wz, col.biome);
         // caves: three layers of winding tunnels, big caverns and the odd opening to the sky
         if (id !== 0 && id !== B.bedrock && id !== B.water && y > 4 && y < h - 3 + openTop) {
@@ -247,6 +265,20 @@ export class TerrainGen {
       for (let i = 0; i < hgt; i++) set(i > 3 ? 1 : 0, i, 0, B.palm_log);
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [3, 0], [-3, 0], [0, 3], [0, -3]]) set(dx + 1, hgt - (Math.abs(dx) + Math.abs(dz) > 2 ? 1 : 0), dz, B.palm_leaves, true);
       set(1, hgt, 0, B.palm_leaves, true);
+    } else if (kind === 'autumn') {
+      const hgt = 4 + Math.floor(r * 3), leaf = r < 0.5 ? B.autumn_leaves : B.crimson_leaves;
+      blob(hgt, 2, leaf); blob(hgt + 1, 1, r < 0.25 ? B.autumn_leaves : leaf);
+      for (let i = 0; i < hgt; i++) set(0, i, 0, r < 0.15 ? B.birch_log : B.oak_log);
+    } else if (kind === 'swamp') {
+      // a squat oak with a wide, flat crown and vines hanging down
+      const hgt = 4 + Math.floor(r * 2);
+      for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dz * dz <= 10) { set(dx, hgt, dz, B.oak_leaves, true); if (dx * dx + dz * dz <= 4) set(dx, hgt + 1, dz, B.oak_leaves, true); }
+      for (const [dx, dz] of [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, -2]]) { const len = 1 + Math.floor(((r * 97 + dx * 13 + dz * 7) % 1 + 1) % 1 * 3); for (let k = 1; k <= len; k++) set(dx, hgt - k, dz, B.vines, true); }
+      for (let i = 0; i < hgt; i++) set(0, i, 0, B.oak_log);
+    } else if (kind === 'charred') {
+      const hgt = 3 + Math.floor(r * 4);
+      for (let i = 0; i < hgt; i++) set(0, i, 0, B.charred_log);
+      if (r > 0.4) { set(1, hgt - 1, 0, B.charred_log); set(-1, hgt - 2, 0, B.charred_log); }
     } else if (kind === 'cactus') {
       const hgt = 2 + Math.floor(r * 3);
       for (let i = 0; i < hgt; i++) set(0, i, 0, B.cactus);
@@ -260,7 +292,7 @@ export class TerrainGen {
       const sx = Math.round(x + Math.cos(a) * r), sz = Math.round(z + Math.sin(a) * r);
       const c = this.column(sx, sz);
       const cold = c.biome === BIOME_ID.tundra && tries < 300;   // try hard to start somewhere you won't freeze
-      if (c.h >= SEA + 1 && c.h < SEA + 40 && !cold && !c.river && c.biome !== BIOME_ID.ocean && c.biome !== BIOME_ID.mountains) return { x: sx + 0.5, y: c.h + 1.05, z: sz + 0.5, biome: c.biome };
+      if (c.h >= SEA + 1 && c.h < SEA + 40 && !cold && !c.river && c.biome !== BIOME_ID.ocean && c.biome !== BIOME_ID.mountains && c.biome !== BIOME_ID.volcanic) return { x: sx + 0.5, y: c.h + 1.05, z: sz + 0.5, biome: c.biome };
     }
     return { x: x + 0.5, y: 120, z: z + 0.5, biome: 0 };
   }

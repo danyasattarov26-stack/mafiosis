@@ -26,6 +26,17 @@ export const BIOMES: Biome[] = [
     animals: ['mammoth', 'penguin', 'wolf', 'polar_bear', 'arctic_fox', 'owl'] },
   { key: 'mountains', en: 'Mountains', pt: 'Montanhas', color: '#8a8b8f', top: 'stone', under: 'stone', trees: [{ kind: 'pine', chance: 0.012 }], plants: [{ block: 'tall_grass', chance: 0.03 }, { block: 'flower_blue', chance: 0.006 }, { block: 'potato_crop_2', chance: 0.002 }], temp: 4, weather: 'snow',
     animals: ['goat', 'sheep', 'bear', 'wolf', 'owl', 'horse'] },
+  // ---- added later (append only: the map and saves use these numbers) ----
+  { key: 'swamp', en: 'Swamp', pt: 'Pântano', color: '#4e5e3a', top: 'swamp_grass', under: 'dirt', deep: 'mud', trees: [{ kind: 'swamp', chance: 0.02 }], plants: [{ block: 'tall_grass', chance: 0.14 }, { block: 'fern', chance: 0.05 }, { block: 'brown_mushroom', chance: 0.01 }, { block: 'red_mushroom', chance: 0.006 }], temp: 22, weather: 'rain',
+    animals: ['frog', 'crocodile', 'duck', 'boar', 'owl'] },
+  { key: 'taiga', en: 'Taiga', pt: 'Taiga', color: '#3e6a4a', top: 'podzol', under: 'dirt', trees: [{ kind: 'pine', chance: 0.045 }], plants: [{ block: 'fern', chance: 0.12 }, { block: 'berry_bush', chance: 0.012 }, { block: 'tall_grass', chance: 0.05 }, { block: 'brown_mushroom', chance: 0.004 }], temp: 4, weather: 'snow',
+    animals: ['wolf', 'bear', 'deer', 'fox', 'horse', 'owl'] },
+  { key: 'autumn', en: 'Autumn Forest', pt: 'Floresta de Outono', color: '#c8782a', top: 'grass', under: 'dirt', trees: [{ kind: 'autumn', chance: 0.03 }, { kind: 'birch', chance: 0.008 }], plants: [{ block: 'tall_grass', chance: 0.1 }, { block: 'flower_red', chance: 0.01 }, { block: 'pumpkin', chance: 0.003 }, { block: 'red_mushroom', chance: 0.004 }, { block: 'brown_mushroom', chance: 0.004 }], temp: 12, weather: 'rain',
+    animals: ['deer', 'fox', 'rabbit', 'boar', 'horse', 'owl'] },
+  { key: 'canyon', en: 'Red Canyon', pt: 'Desfiladeiro Vermelho', color: '#c0603a', top: 'red_sand', under: 'terracotta_orange', deep: 'terracotta', trees: [{ kind: 'cactus', chance: 0.003 }], plants: [{ block: 'dead_bush', chance: 0.01 }], temp: 33, weather: 'dry',
+    animals: ['goat', 'camel', 'rabbit', 'fox', 'lion'] },
+  { key: 'volcanic', en: 'Volcanic Fields', pt: 'Campos Vulcânicos', color: '#4a4448', top: 'ash', under: 'basalt', deep: 'basalt', trees: [{ kind: 'charred', chance: 0.004 }], plants: [{ block: 'dead_bush', chance: 0.005 }], temp: 30, weather: 'dry',
+    animals: ['goat', 'rabbit', 'owl', 'boar', 'fox'] },
 ];
 export const BIOME_ID: Record<string, number> = Object.fromEntries(BIOMES.map((b, i) => [b.key, i]));
 
