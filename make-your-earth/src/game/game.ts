@@ -12,6 +12,7 @@ import { Input } from './input';
 import { Inventory, type Stack } from './inventory';
 import { Animals, loadModel, type Beast, type PetSave } from './animals';
 import { Projectiles } from './projectiles';
+import { Boats, type Boat, type BoatSave } from './boats';
 import { MOD_BLOCKS, runHooks, modIds } from '../mods/mods';
 import { newQuest, progress, nearestVault, STARSTONES, type QuestData } from './quest';
 import { SKY_ALTAR, SKY_TOP, SKY_BELLS, type Dim } from '../world/gen';
@@ -29,6 +30,64 @@ import { resetCustom, registerCustom, library, facePixels, tiles6, EXTRA, custom
 import { forgetIcon } from '../render/textures';
 import { Ghost, place, capture, needs, type Blueprint } from './blueprints';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+/** first-person moves, as keyframes: [time, x, y, z, rotX, rotY, rotZ] */
+const POSES: Record<string, number[][]> = {
+  chop: [[0, 0, 0, 0, 0, 0, 0], [0.25, 0.02, 0.1, 0.05, 0.95, 0, -0.15], [0.55, -0.12, -0.17, -0.22, -1.35, 0, 0.3], [1, 0, 0, 0, 0, 0, 0]],
+  slash: [[0, 0, 0, 0, 0, 0, 0], [0.2, 0.12, 0.05, 0.02, 0.25, 0.95, -0.55], [0.55, -0.46, -0.05, -0.18, -0.15, -1.25, 0.65], [1, 0, 0, 0, 0, 0, 0]],
+  thrust: [[0, 0, 0, 0, 0, 0, 0], [0.25, 0, 0.02, 0.16, 0.12, 0, 0], [0.5, -0.08, 0.05, -0.55, -0.15, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+  punch: [[0, 0, 0, 0, 0, 0, 0], [0.35, -0.06, 0.05, -0.22, -0.38, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+  eat: [[0, 0, 0, 0, 0, 0, 0], [0.25, -0.32, 0.24, 0.14, 0.45, -0.65, 0], [0.8, -0.32, 0.24, 0.14, 0.45, -0.65, 0], [1, 0, 0, 0, 0, 0, 0]],
+  release: [[0, -0.3, 0.12, 0.06, 0.05, -0.15, 0.12], [0.25, -0.3, 0.14, -0.04, 0.12, -0.15, 0.12], [1, 0, 0, 0, 0, 0, 0]],
+};
+function pose(kind: string, u: number) {
+  const ks = POSES[kind] ?? POSES.punch;
+  for (let i = 1; i < ks.length; i++) {
+    if (u > ks[i][0]) continue;
+    const a = ks[i - 1], b = ks[i], f = (u - a[0]) / Math.max(1e-4, b[0] - a[0]), e = f * f * (3 - 2 * f);
+    return [1, 2, 3, 4, 5, 6].map(j => a[j] + (b[j] - a[j]) * e);
+  }
+  return [0, 0, 0, 0, 0, 0];
+}
+/** swords, knives, spears, hammers and the bow, made of simple parts */
+function buildWeapon(d: { key: string; color: string; tool?: { type: string } }): { g: THREE.Group; pull?: (k: number) => void } | null {
+  const type = d.key === 'bow' ? 'bow' : d.tool?.type;
+  if (!type || !['sword', 'knife', 'spear', 'hammer', 'bow'].includes(type)) return null;
+  const g = new THREE.Group(), metal = new THREE.MeshLambertMaterial({ color: d.color }), wood = new THREE.MeshLambertMaterial({ color: '#6b4a2b' }), dark = new THREE.MeshLambertMaterial({ color: '#3a2a1e' });
+  const box = (w: number, h: number, dd: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, dd), m); o.position.set(x, y, z); g.add(o); return o; };
+  if (type === 'sword' || type === 'knife') {
+    const L = type === 'sword' ? 0.62 : 0.3;
+    box(0.06, L, 0.016, metal, 0, 0.1 + L / 2, 0); box(0.022, L * 0.9, 0.02, new THREE.MeshLambertMaterial({ color: new THREE.Color(d.color).multiplyScalar(0.75) }), 0, 0.1 + L / 2, 0);
+    box(0.2, 0.035, 0.05, dark, 0, 0.1, 0); box(0.04, 0.16, 0.04, wood, 0, 0.0, 0); box(0.055, 0.04, 0.055, dark, 0, -0.09, 0);
+    g.rotation.set(-0.55, 0, -0.15); g.position.set(0, -0.08, -0.12);
+  } else if (type === 'spear') {
+    box(0.035, 1.25, 0.035, wood, 0, 0.3, 0);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), metal); tip.position.y = 1.02; g.add(tip);
+    g.rotation.set(-1.25, 0, 0); g.position.set(0, -0.05, -0.1);
+  } else if (type === 'hammer') {
+    box(0.04, 0.5, 0.04, wood, 0, 0.1, 0); box(0.26, 0.13, 0.13, metal, 0, 0.36, 0);
+    g.rotation.set(-0.45, Math.PI / 2, 0.1); g.position.set(0, -0.12, -0.08);
+  } else {
+    // the bow: a curved stave, a string and an arrow that appears as you draw
+    const stave = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.018, 5, 18, Math.PI * 0.86), wood);
+    stave.rotation.z = Math.PI / 2 + Math.PI * 0.07; g.add(stave);
+    const tipY = Math.sin(Math.PI * 0.43) * 0.36, tipX = -Math.cos(Math.PI * 0.43) * 0.36;
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+    const str = new THREE.Line(sg, new THREE.LineBasicMaterial({ color: '#e8e2d0' })); g.add(str);
+    const arrow = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.012, 0.012), new THREE.MeshLambertMaterial({ color: '#c8a870' })); shaft.position.x = 0.31; arrow.add(shaft);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.07, 4), new THREE.MeshLambertMaterial({ color: '#6a6e74' })); head.rotation.z = -Math.PI / 2; head.position.x = 0.64; arrow.add(head);
+    arrow.visible = false; g.add(arrow);
+    const pull = (k: number) => {
+      const nock = tipX - 0.02 - k * 0.34, a = sg.getAttribute('position') as THREE.BufferAttribute;
+      a.setXYZ(0, tipX, tipY, 0); a.setXYZ(1, nock, 0, 0); a.setXYZ(2, tipX, -tipY, 0); a.needsUpdate = true;
+      arrow.visible = k > 0.02; arrow.position.set(nock, 0, 0);
+    };
+    pull(0);
+    g.rotation.set(0, Math.PI / 2, 0.1); g.position.set(-0.05, 0.05, -0.2);
+    return { g, pull };
+  }
+  return { g };
+}
 
 /** soft, tileable clouds painted from overlapping blobs */
 function makeCloudTexture() {
@@ -56,7 +115,7 @@ export const randomName = (r = Math.random) => `${FIRST[Math.floor(r() * FIRST.l
 
 export interface Grave { id: string; x: number; y: number; z: number; owner: string; name: string; items: Stack[]; at: number }
 export interface Remote { id: string; name: string; look: number; obj: THREE.Group; mixer: THREE.AnimationMixer | null; actions: Record<string, THREE.AnimationAction>; cur: string; pos: THREE.Vector3; yaw: number; anim: string; downed: boolean; label: THREE.Sprite; seen: number }
-export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; dim?: Dim; skyEdits?: any; skyContainers?: Record<string, Container>; skyCrops?: Record<string, number>; quest?: QuestData; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
+export interface SaveData { id: string; name: string; seed: number; created: number; played: number; time: number; edits: any; player: any; graves: Grave[]; explored: string[]; waypoints: { x: number; z: number; label: string }[]; customBlocks?: CustomBlock[]; mods?: string[]; dim?: Dim; skyEdits?: any; skyContainers?: Record<string, Container>; skyCrops?: Record<string, number>; quest?: QuestData; boats?: BoatSave[]; blueprints?: any[]; admin?: { banned: string[] }; baseBlocks?: number; containers?: Record<string, Container>; crops?: Record<string, number>; pets?: PetSave[] }
 
 export class Game {
   scene = new THREE.Scene();
@@ -78,7 +137,7 @@ export class Game {
   net: { block?: (x: number, y: number, z: number, id: number) => void; grave?: (g: Grave | null, removeId?: string) => void; blockdef?: (c: CustomBlock) => void; blockdefs?: (l: CustomBlock[]) => void;
     hurt?: (peer: string, dmg: number, from: THREE.Vector3) => void; travel?: () => void; dim?: (to: Dim, at: [number, number, number]) => void;
     beam?: (x: number, y: number, z: number) => void; ending?: () => void; ended?: () => void; toastAll?: (key: string, vars?: Record<string, any>) => void; arrow?: (from: THREE.Vector3, vel: THREE.Vector3) => void; cont?: (key: string, c: Container | null) => void;
-    sleep?: () => void; tame?: (id: string) => void; saddle?: (id: string) => void; ride?: (b: Beast) => void; crop?: (key: string, t: number | null) => void } = {};
+    sleep?: () => void; tame?: (id: string) => void; saddle?: (id: string) => void; ride?: (b: Beast) => void; boat?: (op: 'add' | 'move' | 'rm', b: Boat) => void; crop?: (key: string, t: number | null) => void } = {};
   isGuest = false;
   private highlight: THREE.LineSegments; private crack: THREE.Mesh;
   private held = new THREE.Group(); private heldKey = ''; private offHeld = new THREE.Group(); private offKey = ''; private swing = 0; private attackCd = 0;
@@ -114,6 +173,8 @@ export class Game {
     this.scene.add(this.animals.group);
     this.animals.monsterCap = settings.preset === 'potato' ? 6 : settings.preset === 'low' ? 9 : 14;
     this.projectiles = new Projectiles(this.world, this.animals); this.scene.add(this.projectiles.group);
+    this.boats = new Boats(this.world); this.scene.add(this.boats.group);
+    if (this.dim === 'earth') this.boats.load(save.boats);
     this.containers = (this.dim === 'sky' ? save.skyContainers : save.containers) ?? {}; this.crops = (this.dim === 'sky' ? save.skyCrops : save.crops) ?? {};
     this.animals.setWorld(this.world, this.dim);
     this.hemi = new THREE.HemisphereLight('#cfe4ff', '#5a4a3a', 1.6); this.scene.add(this.hemi);
@@ -178,6 +239,7 @@ export class Game {
     if (!(save as any).guest) this.animals.loadPets(save.pets);
   }
   projectiles: Projectiles;
+  boats: Boats; boating: Boat | null = null; private boatSendT = 0;
   private clouds: THREE.Mesh | null = null; private cloudTex: THREE.CanvasTexture | null = null;
   containers: Record<string, Container> = {};
   crops: Record<string, number> = {};          // farmland crops: block position → game time planted
@@ -269,6 +331,7 @@ export class Game {
     }
     if (!this.paused) {
       if (this.riding) this.rideTick(dt);
+      else if (this.boating) this.boatTick(dt);
       else p.update(dt, this.world, inp, settings.sensitivity, settings.invertY);
       this.interact(dt);
     }
@@ -285,7 +348,8 @@ export class Game {
     this.animals.sun = this.sunLevel;
     this.animals.update(dt, p, others);
     this.projectiles.update(dt, p.pos, [...this.remotes.values()], !this.isGuest);
-    this.bowCd -= dt; this.sleepFade = Math.max(0, this.sleepFade - dt * 0.5);
+    this.boats.update(dt, this.time); this.lidTick(dt);
+    this.bowCd -= dt; this.bowTick(dt); this.player.slowed = this.bowCharge >= 0; this.sleepFade = Math.max(0, this.sleepFade - dt * 0.5);
     if (!this.isGuest) { this.furnaceTick(dt); this.cropTick(dt); }
     this.questTick(dt); this.beamTick(dt);
     if (this.slowFall > 0) { this.slowFall -= dt; p.vel.y = Math.max(p.vel.y, -2.5); (p as any).fallStart = p.pos.y; }
@@ -346,13 +410,18 @@ export class Game {
       }
       return;
     }
+    // hit a boat to pick it back up
+    if (inp.hit('attack') && !this.boating) {
+      const bt = this.boats.rayHit(o, dir, 4);
+      if (bt && !bt.rider && (!hit || hit.dist > o.distanceTo(bt.pos))) { this.boats.remove(bt); this.net.boat?.('rm', bt); this.give('boat', 1); this.startAct(this.swingKind(), 0.42); sound.play('wood_break', { vol: 0.6 }); return; }
+    }
     // attack animals first
     this.attackCd -= dt;
     if ((inp.hit('attack') || (inp.primary && this.attackCd <= 0))) {
       const beast = this.animals.rayHit(o, dir, 3.6, b => b.owner === this.profileId || b === this.riding);
       if (beast && (!hit || hit.dist > o.distanceTo(beast.pos))) {
         if (this.attackCd <= 0) {
-          this.attackCd = 0.55; this.swing = 1;
+          this.attackCd = 0.55; this.swing = 1; this.startAct(this.swingKind(), 0.42);
           const dmg = def?.tool ? def.tool.damage : 1;
           sound.play('swing', { vol: 0.5 });
           if (this.isGuest) this.netAttack?.(beast.id, dmg);
@@ -374,7 +443,7 @@ export class Game {
         const tool = def?.tool, right = !!tool && tool.type === bd.tool;
         const speed = right ? tool!.speed : (bd.tool === 'pickaxe' ? 0.3 : 1);
         this.breaking.p += dt * speed / Math.max(0.05, bd.hard * 1.5);
-        this.swing = Math.max(this.swing, 0.6);
+        this.swing = Math.max(this.swing, 0.6); this.mining = true;
         if (Math.random() < dt * 10) { this.spray(new THREE.Vector3(hit.x + 0.5 + hit.nx * 0.5, hit.y + 0.5 + hit.ny * 0.5, hit.z + 0.5 + hit.nz * 0.5), this.blockColor(hit.id), 2); sound.play(bd.tool === 'axe' ? 'chop' : bd.tool === 'pickaxe' ? 'mine' : 'dig', { vol: 0.35 }); }
         if (this.breaking.p >= 1) this.breakBlock(hit.x, hit.y, hit.z, hit.id, def);
       }
@@ -405,14 +474,22 @@ export class Game {
     if (!inp.hit('use')) return;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
     if (this.riding) { this.dismount(); return; }
+    if (this.boating) { this.leaveBoat(); return; }
+    const boat = this.boats.rayHit(this.camera.position, dir, 4);
+    if (boat && (!hit || hit.dist > this.camera.position.distanceTo(boat.pos)) && !boat.rider) { this.board(boat); return; }
     // bow: shoot an arrow
-    if (held?.k === 'bow') { this.shootBow(dir); return; }
+    if (held?.k === 'bow') { this.startDraw(dir); return; }
     // creatures in front of you: tame, saddle, ride, shear
     const beast = this.animals.rayHit(this.camera.position, dir, 3.5);
     if (beast && (!hit || hit.dist > this.camera.position.distanceTo(beast.pos)) && this.useOnBeast(beast, held)) return;
     // water: drink or fill a bottle
     const wHit = this.world.raycast(this.camera.position, dir, 4, true);
     if (wHit && wHit.id === B.water && (!hit || wHit.dist <= hit.dist + 0.01)) {
+      if (held?.k === 'boat') {
+        const top = this.boats.waterTop(wHit.x + 0.5, wHit.z + 0.5, wHit.y);
+        if (top != null) { const b = this.boats.add(wHit.x + 0.5, top - 0.18, wHit.z + 0.5, this.player.yaw); this.inv.takeOne(this.inv.sel); this.net.boat?.('add', b); sound.play('splash', { vol: 0.5 }); this.toast(t('boat.placed')); }
+        return;
+      }
       if (held?.k === 'empty_bottle') { this.inv.takeOne(this.inv.sel); this.give('dirty_water', 1); this.toast(t('hud.fillBottle')); sound.play('splash', { vol: 0.5 }); return; }
       if (held?.k === 'bucket') { this.inv.takeOne(this.inv.sel); this.give('water_bucket', 1); sound.play('splash', { vol: 0.5 }); return; }
       if (!held || !def?.block) { this.drinkRaw(); return; }
@@ -432,7 +509,7 @@ export class Game {
     const above = this.world.get(hit.x, hit.y + 1, hit.z);
     if (def?.tool?.type === 'hoe' && TILLABLE.has(hit.id) && (above === 0 || (above > 0 && BLOCKS[above].render === 'cross' && !CROP_FAMILY[above]))) {
       if (above > 0) this.world.set(hit.x, hit.y + 1, hit.z, 0);
-      this.world.set(hit.x, hit.y, hit.z, B.farmland); this.inv.wear(1); this.swing = 0.8; sound.play('dig', { vol: 0.6 });
+      this.world.set(hit.x, hit.y, hit.z, B.farmland); this.inv.wear(1); this.swing = 0.8; this.startAct('chop', 0.4); sound.play('dig', { vol: 0.6 });
       if (Math.random() < 0.1) this.give('seeds', 1);
       return;
     }
@@ -459,7 +536,7 @@ export class Game {
         return;
       }
       if (this.placeAt(hit, def.block)) {
-        this.inv.takeOne(this.inv.sel); sound.play('place', { vol: 0.5 }); this.swing = 0.5;
+        this.inv.takeOne(this.inv.sel); sound.play('place', { vol: 0.5 }); this.swing = 0.5; this.startAct('punch', 0.25);
         if (def.block === B.sky_beacon && this.dim === 'earth') { this.data.quest!.beacon = [hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz]; this.toast(t('quest.beaconPlaced'), 'good'); }
       }
     }
@@ -474,7 +551,7 @@ export class Game {
   private hookWorld() { this.world.onBlockChange = (x, y, z, id) => this.net.block?.(x, y, z, id); }
   /** keep this world's changes in the save (each world has its own) */
   private storeDim() {
-    if (this.dim === 'earth') { this.data.edits = this.world.saveEdits(); this.data.containers = this.containers; this.data.crops = this.crops; }
+    if (this.dim === 'earth') { this.data.edits = this.world.saveEdits(); this.data.containers = this.containers; this.data.crops = this.crops; this.data.boats = this.boats.save(); }
     else { this.data.skyEdits = this.world.saveEdits(); this.data.skyContainers = this.containers; this.data.skyCrops = this.crops; }
   }
   /** move everyone here to the other world */
@@ -483,7 +560,7 @@ export class Game {
     this.storeDim();
     if (this.dim === 'earth' && !this.isGuest) this.data.pets = this.animals.pets(this.profileId);
     this.dismount(); this.cancelGhost(); this.site = null; this.selecting = null;
-    this.animals.clear(); this.projectiles.clear(); this.clearBeam();
+    this.leaveBoat(); this.animals.clear(); this.projectiles.clear(); this.clearBeam(); this.boats.clear();
     for (const d of this.drops) this.scene.remove(d.obj); this.drops = [];
     this.scene.remove(this.world.group); this.world.dispose();
     this.dim = to; this.data.dim = to;
@@ -492,7 +569,8 @@ export class Game {
     this.world.loadEdits(to === 'sky' ? this.data.skyEdits : this.data.edits);
     this.world.syncTables(this.baseBlocks);
     this.hookWorld(); this.scene.add(this.world.group);
-    this.animals.setWorld(this.world, to); this.projectiles.world = this.world;
+    this.animals.setWorld(this.world, to); this.projectiles.world = this.world; this.boats.world = this.world;
+    if (to === 'earth') this.boats.load(this.data.boats);
     this.containers = (to === 'sky' ? this.data.skyContainers : this.data.containers) ?? {};
     this.crops = (to === 'sky' ? this.data.skyCrops : this.data.crops) ?? {};
     if (to === 'earth' && !this.isGuest) this.animals.loadPets(this.data.pets);
@@ -670,7 +748,37 @@ export class Game {
     const k = posKey(x, y, z);
     if (!this.containers[k] || this.containers[k].kind !== kind) this.containers[k] = kind === 'chest' ? newChest() : newFurnace();
     sound.play(kind === 'chest' ? 'chest_open' : 'click', { vol: 0.6 });
+    if (kind === 'chest') this.openLid(x, y, z);
     this.onOpenContainer?.(k);
+  }
+  // the lid of the chest you're looking into swings open, and shuts when you're done
+  private lid: { g: THREE.Group; pivot: THREE.Group; t: number; open: boolean; axis: 'x' | 'z'; sign: number } | null = null;
+  private openLid(x: number, y: number, z: number) {
+    this.closeLid(true);
+    const id = this.world.get(x, y, z); if (id <= 0) return;
+    const tex = (tile: number) => { const tx = new THREE.CanvasTexture(this.atlas.canvasFor(tile)); tx.magFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace; return tx; };
+    const six = tiles6(id), mats = six.map(tile => new THREE.MeshLambertMaterial({ map: tex(tile) }));
+    // hinge on the far side from you, so it opens towards you
+    const dx = x + 0.5 - this.player.pos.x, dz = z + 0.5 - this.player.pos.z, alongZ = Math.abs(dz) >= Math.abs(dx), sign = alongZ ? Math.sign(dz) || 1 : Math.sign(dx) || 1;
+    const g = new THREE.Group(), pivot = new THREE.Group(); g.position.set(x + 0.5, y + 0.68, z + 0.5);
+    const geo = new THREE.BoxGeometry(1.03, 0.34, 1.03);
+    if (alongZ) { geo.translate(0, 0.17, -sign * 0.515); pivot.position.z = sign * 0.515; } else { geo.translate(-sign * 0.515, 0.17, 0); pivot.position.x = sign * 0.515; }
+    pivot.add(new THREE.Mesh(geo, mats)); g.add(pivot);
+    const inside = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ color: '#1a120a' })); inside.rotation.x = -Math.PI / 2; inside.position.y = 0.335; g.add(inside);
+    this.scene.add(g);
+    this.lid = { g, pivot, t: 0, open: true, axis: alongZ ? 'x' : 'z', sign };
+  }
+  closeLid(now = false) {
+    if (!this.lid) return;
+    if (now) { this.scene.remove(this.lid.g); this.lid = null; return; }
+    if (this.lid.open) { this.lid.open = false; sound.play('chest_close', { vol: 0.5 }); }
+  }
+  private lidTick(dt: number) {
+    const l = this.lid; if (!l) return;
+    l.t = Math.max(0, Math.min(1, l.t + (l.open ? dt * 4 : -dt * 5)));
+    const a = (1 - (1 - l.t) ** 3) * 1.25;
+    if (l.axis === 'x') l.pivot.rotation.x = l.sign * a; else l.pivot.rotation.z = -l.sign * a;
+    if (!l.open && l.t <= 0) this.closeLid(true);
   }
   /** the UI changed a container: share it */
   containerChanged(k: string) { this.net.cont?.(k, this.containers[k] ?? null); }
@@ -697,14 +805,28 @@ export class Game {
   }
 
   // ---------------- combat ----------------
-  private shootBow(dir: THREE.Vector3) {
-    if (this.bowCd > 0) return;
+  /** start drawing the bow: hold to pull it back further (on a phone, a tap shoots at once) */
+  private startDraw(dir: THREE.Vector3) {
+    if (this.bowCd > 0 || this.bowCharge >= 0) return;
     if (this.inv.count('arrow') < 1) { this.toast(t('combat.noArrows'), 'bad'); return; }
-    this.inv.remove('arrow', 1); this.bowCd = 0.7; this.swing = 0.7;
-    const from = this.camera.position.clone().addScaledVector(dir, 0.6), vel = dir.clone().multiplyScalar(34);
-    this.projectiles.fire(from, vel, 'me', (ITEM.bow.tool?.damage ?? 6) + 2); this.net.arrow?.(from, vel);
-    sound.play('bow', { vol: 0.7 }); this.inv.wear(1);
+    if (this.input.touch) { this.shootBow(dir, 0.75); return; }
+    this.bowCharge = 0; sound.play('bow', { vol: 0.35, pitch: 0.7 });
   }
+  private bowTick(dt: number) {
+    if (this.bowCharge < 0) return;
+    if (this.inv.held()?.k !== 'bow' || this.player.downed > 0 || this.paused) { this.bowCharge = -1; return; }
+    if (this.input.secondary) { this.bowCharge = Math.min(1, this.bowCharge + dt * 1.1); return; }
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    this.shootBow(dir, 0.2 + this.bowCharge * 0.8); this.bowCharge = -1;
+  }
+  private shootBow(dir: THREE.Vector3, power: number) {
+    if (this.inv.count('arrow') < 1) return;
+    this.inv.remove('arrow', 1); this.bowCd = 0.3; this.swing = 0.7; this.startAct('release', 0.3);
+    const from = this.camera.position.clone().addScaledVector(dir, 0.6), vel = dir.clone().multiplyScalar(12 + 26 * power);
+    this.projectiles.fire(from, vel, 'me', ((ITEM.bow.tool?.damage ?? 6) + 2) * (0.35 + 0.65 * power)); this.net.arrow?.(from, vel);
+    sound.play('bow', { vol: 0.5 + power * 0.4, pitch: 0.9 + power * 0.3 }); this.inv.wear(1);
+  }
+  bowCharge = -1;
   /** something hit you: a shield in your off hand stops some of a hit from the front (all of it while crouching) */
   hurtBy(dmg: number, from: THREE.Vector3, arrow: boolean) {
     const p = this.player; if (p.downed > 0 || p.dead) return;
@@ -750,6 +872,38 @@ export class Game {
     }
     return false;
   }
+  // ---------------- boats ----------------
+  private board(b: Boat) {
+    this.dismount(); this.boating = b; b.rider = this.profileId; this.player.crouching = true;
+    this.toast(this.input.touch ? t('boat.hintTouch') : t('boat.hint'));
+  }
+  leaveBoat() {
+    const b = this.boating; if (!b) return;
+    this.boating = null; b.rider = null; b.speed = 0; this.player.crouching = false;
+    // step onto the nearest dry ground, or just out beside the boat
+    let best: THREE.Vector3 | null = null, bd = 99;
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+      const x = Math.floor(b.pos.x) + dx, z = Math.floor(b.pos.z) + dz, y = this.world.surface(x, z), id = this.world.get(x, y, z), d = Math.hypot(dx, dz);
+      if (id > 0 && id !== B.water && BLOCKS[id].solid !== false && Math.abs(y - b.pos.y) < 3 && d < bd) { bd = d; best = new THREE.Vector3(x + 0.5, y + 1.05, z + 0.5); }
+    }
+    this.player.pos.copy(best ?? b.pos.clone().add(new THREE.Vector3(Math.cos(b.yaw) * 1.3, 0.6, -Math.sin(b.yaw) * 1.3)));
+    this.player.vel.set(0, 0, 0); (this.player as any).fallStart = this.player.pos.y;
+    this.net.boat?.('move', b);
+  }
+  private boatTick(dt: number) {
+    const b = this.boating!, p = this.player, inp = this.input;
+    if (!this.boats.list.includes(b) || p.downed > 0) { this.leaveBoat(); return; }
+    p.turn(inp, settings.sensitivity, settings.invertY);
+    if (inp.crouch && !this.input.touch) { this.leaveBoat(); return; }
+    const s = Math.sin(p.yaw), c = Math.cos(p.yaw);
+    const dir = new THREE.Vector3(inp.move.x * c + inp.move.z * s, 0, -inp.move.x * s + inp.move.z * c);
+    if (dir.lengthSq() > 0.01) dir.normalize();
+    this.boats.steer(b, dir, inp.sprint, dt);
+    p.pos.set(b.pos.x, b.pos.y + 0.12, b.pos.z); p.vel.set(0, 0, 0); p.onGround = true; p.crouching = true; (p as any).fallStart = p.pos.y;
+    if (Math.abs(b.speed) > 0.5 && Math.random() < dt * 6) this.spray(b.pos.clone().add(new THREE.Vector3(Math.sin(b.yaw) * 1.1, 0.1, Math.cos(b.yaw) * 1.1)), [0.8, 0.9, 1], 2);
+    this.boatSendT -= dt; if (this.boatSendT <= 0) { this.boatSendT = 0.1; this.net.boat?.('move', b); }
+  }
+
   private mount(b: Beast) {
     this.riding = b; b.localRide = this.isGuest; b.state = 'idle';
     this.toast(this.input.touch ? t('ride.hintTouch') : t('ride.hint'));
@@ -930,7 +1084,7 @@ export class Game {
     if (f.warm) st.temp = Math.min(38, st.temp + f.warm * 0.15);
     if (f.sick && Math.random() < f.sick) { st.sick = Math.min(1, st.sick + 0.45); this.toast(t('hud.gotSick'), 'bad'); }
     if (f.cure) { const was = st.sick; st.sick = Math.max(0, st.sick - f.cure); if (was > 0.05 && st.sick < 0.05) this.toast(t('hud.cured'), 'good'); }
-    this.inv.takeOne(slot);
+    this.inv.takeOne(slot); this.startAct('eat', 0.75);
     if (d.kind === 'drink' || (d.kind === 'medicine' && d.icon === 'bottle')) { this.give('empty_bottle', 1); this.toast(t('hud.drank', { item: nm(d) })); sound.play('drink'); }
     else { this.toast(t('hud.ate', { item: nm(d) })); sound.play('eat'); }
   }
@@ -1038,7 +1192,7 @@ export class Game {
   revive() { const p = this.player; if (p.downed <= 0) return; p.downed = 0; p.stats.health = 30; this.onChange(); }
   die() {
     const p = this.player;
-    p.downed = 0; this.dismount(); this.data.quest!.deaths++;
+    p.downed = 0; this.dismount(); this.leaveBoat(); this.data.quest!.deaths++;
     // leave everything in a grave only you can open
     const items = this.inv.all();
     const g: Grave | null = items.length ? this.placeGrave(p.pos, items) : null;
@@ -1142,15 +1296,43 @@ export class Game {
   }
 
   // ======================= what you hold =======================
+  // ---- first-person animations: each kind of tool moves its own way ----
+  private act: { kind: string; t: number; dur: number } | null = null;
+  private mining = false; private mineT = 0; private bowPull: ((k: number) => void) | null = null;
+  private startAct(kind: string, dur: number) { this.act = { kind, t: 0, dur }; }
+  private swingKind() {
+    const tt = ITEM[this.inv.held()?.k ?? '']?.tool?.type;
+    return tt === 'sword' || tt === 'knife' ? 'slash' : tt === 'spear' ? 'thrust' : tt ? 'chop' : 'punch';
+  }
   private updateHeld(dt: number) {
     const s = this.inv.held(), key = s?.k ?? '';
-    if (key !== this.heldKey) { this.heldKey = key; this.buildHeld(key); }
+    if (key !== this.heldKey) { this.heldKey = key; this.bowPull = null; this.buildHeld(key); }
     this.swing = Math.max(0, this.swing - dt * 3.2);
-    const bob = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5 && this.player.onGround ? Math.sin(performance.now() / 110) * 0.02 : 0;
-    const sw = Math.sin(this.swing * Math.PI);
-    this.held.position.set(0.44, -0.46 + bob - sw * 0.12, -0.6 - sw * 0.12);
-    this.held.rotation.set(-sw * 1.1, 0.15, 0);
-    this.held.visible = this.player.downed <= 0 && !this.player.dead;
+    const moving = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5 && this.player.onGround;
+    const bob = moving ? Math.sin(performance.now() / 110) * 0.02 : Math.sin(performance.now() / 900) * 0.006;
+    // pose offsets: x, y, z, rotX, rotY, rotZ
+    let o = [0, 0, 0, 0, 0, 0];
+    if (this.act) {
+      this.act.t += dt; const u = Math.min(1, this.act.t / this.act.dur);
+      o = pose(this.act.kind, u);
+      if (this.act.kind === 'eat' && u > 0.25 && u < 0.8) o[1] += Math.sin(this.act.t * 38) * 0.025;
+      if (u >= 1) this.act = null;
+    } else if (this.mining) {
+      // keep chopping while you hold the button on a block
+      this.mineT += dt * 2.6; o = pose(this.swingKind() === 'slash' ? 'slash' : 'chop', this.mineT % 1);
+    } else this.mineT = 0;
+    this.mining = false;
+    if (this.bowCharge >= 0) {
+      // draw: bow up in front of you, string pulled back, a shiver at full draw
+      const k = this.bowCharge, sh = k >= 1 ? (Math.random() - 0.5) * 0.008 : 0;
+      o = [-0.3 + sh, 0.12 + sh, 0.06 * k, 0.05, -0.15, 0.12];
+      this.bowPull?.(k);
+    } else this.bowPull?.(0);
+    const want = settings.fov - (this.bowCharge > 0 ? this.bowCharge * 9 : 0);
+    if (Math.abs(this.camera.fov - want) > 0.05) { this.camera.fov += (want - this.camera.fov) * Math.min(1, dt * 10); this.camera.updateProjectionMatrix(); }
+    this.held.position.set(0.44 + o[0], -0.46 + bob + o[1], -0.6 + o[2]);
+    this.held.rotation.set(o[3], 0.15 + o[4], o[5]);
+    this.held.visible = this.player.downed <= 0 && !this.player.dead && !this.riding;
     // shield on the left: raised while crouching, bumps when it takes a hit
     const ok = this.inv.offhand?.k ?? '';
     if (ok !== this.offKey) { this.offKey = ok; this.buildOffhand(ok); }
@@ -1187,6 +1369,9 @@ export class Game {
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), mats); cube.position.set(-0.02, 0.14, -0.14); cube.rotation.y = 0.6; this.held.add(cube);
       return;
     }
+    // weapons and the bow are built in code so they can move properly
+    const made = d && buildWeapon(d);
+    if (made) { this.held.add(made.g); this.bowPull = made.pull ?? null; return; }
     const toolModel: Record<string, string> = { axe: 'tool-axe', pickaxe: 'tool-pickaxe', shovel: 'tool-shovel', hoe: 'tool-hoe' };
     const tm = d?.tool && toolModel[d.tool.type];
     if (tm) {

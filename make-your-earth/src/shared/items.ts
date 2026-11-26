@@ -190,6 +190,7 @@ for (const d of DYES) add({ key: `${d.k}_dye`, en: `${d.en} Dye`, pt: `Corante $
   { key: 'wooden_shield', en: 'Wooden Shield', pt: 'Escudo de Madeira', kind: 'misc', color: '#a8834f', color2: '#5e3f22', icon: 'shield', stack: 1, shield: { block: 0.55, durability: 120 } },
   { key: 'iron_shield', en: 'Iron Shield', pt: 'Escudo de Ferro', kind: 'misc', color: '#9aa3ad', color2: '#4a4d52', icon: 'shield', stack: 1, shield: { block: 0.8, durability: 400 }, era: 2 },
   { key: 'shears', en: 'Shears', pt: 'Tesoura de Tosquia', kind: 'tool', color: '#cfd3d8', color2: '#6b4a2b', icon: 'shears', stack: 1 },
+  { key: 'boat', en: 'Rowing Boat', pt: 'Barco a Remos', kind: 'misc', color: '#9a6e3e', color2: '#5a3a1e', icon: 'boat', stack: 1 },
   { key: 'star_compass', en: 'Star Compass', pt: 'Bússola Estelar', kind: 'misc', color: '#f5d04a', color2: '#b07af0', icon: 'compass', stack: 1 },
   { key: 'starstone_ember', en: 'Ember Starstone', pt: 'Pedra Estelar de Brasa', kind: 'misc', color: '#ff6a1a', icon: 'gem', stack: 1, tags: ['starstone'] },
   { key: 'starstone_frost', en: 'Frost Starstone', pt: 'Pedra Estelar de Gelo', kind: 'misc', color: '#8ad8ff', icon: 'gem', stack: 1, tags: ['starstone'] },
@@ -285,3 +286,4 @@ R('terracotta_orange', 4, { terracotta: 4, orange_dye: 1 }, 'workbench'); R('ter
 R('star_compass', 1, { compass: 1, crystal_shard: 2 }, 'workbench'); R('star_compass', 1, { iron_ingot: 2, crystal_shard: 3 }, 'workbench');
 R('sky_beacon', 1, { starstone_ember: 1, starstone_frost: 1, starstone_verdant: 1, starstone_tide: 1, gold_block: 1, glow_crystal: 2 }, 'anvil');
 R('skystone_bricks', 4, { skystone: 4 }, 'workbench'); R('oak_planks', 4, { skywood_log: 1 });
+R('boat', 1, { '#planks': 6, stick: 2 }, 'workbench');

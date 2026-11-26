@@ -74,6 +74,7 @@ export class Session {
     game.net.ending = () => this.room.send({ k: 'plant' }, host());
     game.net.ended = () => this.room.send({ k: 'ended' });
     game.net.toastAll = (key, vars) => this.room.send({ k: 'qtoast', key, vars });
+    game.net.boat = (op, b) => this.room.send({ k: 'boat', op, id: b.id, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, rider: !!b.rider });
     this.room.onJoin = peer => {
       if (this.host) return;   // hosts wait for hello
       this.room.send({ k: 'state', ...game.myState() }, peer);
@@ -107,6 +108,14 @@ export class Session {
         break;
       }
       case 'travel': if (this.host) g.travel(); break;
+      case 'boat': {
+        if (g.dim !== 'earth' || typeof m.id !== 'string') break;
+        let b = g.boats.list.find(q => q.id === m.id);
+        if (m.op === 'rm') { if (b) { if (g.boating === b) g.leaveBoat(); g.boats.remove(b); } break; }
+        if (!b) b = g.boats.add(+m.x, +m.y, +m.z, +m.yaw, m.id);
+        if (g.boating !== b) { b.target = new THREE.Vector3(+m.x, +m.y, +m.z); b.targetYaw = +m.yaw; b.rider = m.rider ? from : null; b.row += 0.5; }
+        break;
+      }
       case 'dim': if (!this.host && from === this.hostPeer && (m.dim === 'sky' || m.dim === 'earth') && Array.isArray(m.at)) g.followDim(m.dim, [+m.at[0], +m.at[1], +m.at[2]]); break;
       case 'beam': g.showBeam(m.x | 0, m.y | 0, m.z | 0); break;
       case 'plant': if (this.host && g.data.quest!.beacon) { const b = g.data.quest!.beacon; g.ending(b[0], b[1], b[2]); } break;

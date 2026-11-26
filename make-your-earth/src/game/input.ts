@@ -4,6 +4,7 @@ import { settings, isTouch } from './settings';
 export class Input {
   move = { x: 0, z: 0 }; look = { x: 0, y: 0 };
   jump = false; sprint = false; crouch = false; primary = false;
+  secondary = false;                         // right button / left trigger held (drawing a bow)
   private pressed = new Set<string>();     // one-shot actions this frame
   private keys = new Set<string>();
   locked = false; enabled = false;
@@ -11,7 +12,7 @@ export class Input {
   private joy: { id: number; x: number; y: number; dx: number; dy: number } | null = null;
   private lookTouch: { id: number; x: number; y: number } | null = null;
   private padPrev: boolean[] = [];
-  sprintToggle = false;
+  sprintToggle = false; private padWasUsed = false;
 
   constructor(private canvas: HTMLElement) {
     addEventListener('keydown', e => {
@@ -22,15 +23,15 @@ export class Input {
       if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
     });
     addEventListener('keyup', e => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.primary = false; });
+    addEventListener('blur', () => { this.keys.clear(); this.primary = false; this.secondary = false; });
     canvas.addEventListener('mousedown', e => {
       if (!this.enabled || this.touch) return;
       if (!this.locked) { this.requestLock(); return; }
       if (e.button === 0) { this.primary = true; this.pressed.add('attack'); }
-      if (e.button === 2) this.pressed.add('use');
+      if (e.button === 2) { this.pressed.add('use'); this.secondary = true; }
       if (e.button === 1) this.pressed.add('pick');
     });
-    addEventListener('mouseup', e => { if (e.button === 0) this.primary = false; });
+    addEventListener('mouseup', e => { if (e.button === 0) this.primary = false; if (e.button === 2) this.secondary = false; });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     addEventListener('mousemove', e => { if (this.locked) { this.look.x += e.movementX; this.look.y += e.movementY; } });
     addEventListener('wheel', e => { if (this.enabled && this.locked) this.pressed.add(e.deltaY > 0 ? 'next' : 'prev'); }, { passive: true });
@@ -63,6 +64,7 @@ export class Input {
       const b = (i: number) => (p.buttons[i]?.value ?? 0) > 0.5;
       if (b(0)) this.jump = true; if (b(10)) this.sprint = true; if (b(1)) this.crouch = true;
       this.primary = this.primary || b(7);
+      this.secondary = b(6) || (this.secondary && !this.padWasUsed); this.padWasUsed = true;
       const edge: [number, string][] = [[6, 'use'], [7, 'attack'], [4, 'prev'], [5, 'next'], [3, 'inventory'], [2, 'eat'], [8, 'map'], [9, 'menu'], [12, 'chat'], [13, 'drop']];
       for (const [i, a] of edge) { const on = b(i); if (on && !this.padPrev[i]) this.pressed.add(a); this.padPrev[i] = on; }
       break;

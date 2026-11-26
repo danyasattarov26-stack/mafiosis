@@ -174,7 +174,7 @@ export class Hud {
   // ---------------- panels ----------------
   close() {
     if (this.cursor) { this.game.inv.add(this.cursor.k, this.cursor.n); this.cursor = null; this.renderCursor(); }
-    if (this.container) { if (this.cont()?.kind === 'chest') sound.play('chest_close', { vol: 0.6 }); this.container = null; }
+    if (this.container) { this.game.closeLid(); this.container = null; }
     this.returnGrid();
     this.open = null; $('.panel', this.root).hidden = true; this.root.classList.remove('panel-open');
     this.game.paused = false;
@@ -256,7 +256,14 @@ export class Hud {
     const shown = list.slice(0, 120);
     const locked = RECIPES.filter(r => !stations.has(r.at) && r.at !== 'furnace').map(r => r.at);
     const nextStation = [...new Set(locked)].slice(0, 4).map(s => t(('inv.station.' + s) as any)).join(', ');
-    panel.innerHTML = `
+    if (this.cont()) {
+      const c = this.cont()!;
+      panel.innerHTML = `<div class="inv chestui ${c.kind}"><button class="close">✕</button>
+        <div class="ctop">${this.containerHTML(slot)}</div>
+        <div class="cbags"><h4>🎒 ${t('cont.yours')}</h4>
+          <div class="grid main">${inv.slots.slice(HOTBAR, SLOTS).map((s2, i) => slot(s2, String(HOTBAR + i))).join('')}</div>
+          <div class="grid hot">${inv.slots.slice(0, HOTBAR).map((s2, i) => slot(s2, String(i), i === inv.sel ? 'sel' : '')).join('')}</div></div></div>`;
+    } else panel.innerHTML = `
       <div class="inv">
         <div class="col left">
           <h3>${t('inv.title')} ${g.stations.has('designer') ? `<button class="btn small" data-bm>🧱 ${t('bm.open')}</button>` : ''}</h3>

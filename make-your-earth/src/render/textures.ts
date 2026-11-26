@@ -234,6 +234,7 @@ function drawItemIcon(g: CanvasRenderingContext2D, it: ItemDef) {
     case 'rod': line(3, c1, 8, 34, 30, 6); line(1, '#eee', 30, 6, 32, 30); break;
     case 'compass': blob(20, 20, 13, 13, c1); blob(20, 20, 10, 10, '#f2eee6'); line(3, '#e23b3b', 20, 20, 20, 11); break;
     case 'shield': g.fillStyle = c2; g.beginPath(); g.moveTo(8, 6); g.lineTo(32, 6); g.lineTo(32, 20); g.quadraticCurveTo(30, 32, 20, 36); g.quadraticCurveTo(10, 32, 8, 20); g.closePath(); g.fill(); g.fillStyle = c1; g.beginPath(); g.moveTo(11, 9); g.lineTo(29, 9); g.lineTo(29, 20); g.quadraticCurveTo(27, 30, 20, 33); g.quadraticCurveTo(13, 30, 11, 20); g.closePath(); g.fill(); rect(18, 9, 4, 24, c2); rect(11, 17, 18, 4, c2); break;
+    case 'boat': g.fillStyle = c1; g.beginPath(); g.moveTo(4, 20); g.lineTo(36, 20); g.lineTo(30, 30); g.lineTo(10, 30); g.closePath(); g.fill(); rect(4, 18, 32, 3, c2); line(2.5, c2, 12, 14, 30, 26); line(2.5, c2, 28, 14, 10, 26); break;
     case 'shears': line(3, c1, 10, 10, 26, 26); line(3, c1, 26, 10, 10, 26); blob(10, 30, 4, 4, c2); blob(30, 30, 4, 4, c2); break;
     case 'dye': blob(20, 24, 11, 9, c1); blob(16, 20, 3, 2, '#fff5'); rect(15, 8, 10, 8, '#e8e2d0'); break;
     case 'pie': blob(20, 22, 14, 9, c2); blob(20, 20, 12, 7, c1); for (let i = 0; i < 4; i++) line(1.5, c2, 12 + i * 5, 16, 14 + i * 5, 24); break;

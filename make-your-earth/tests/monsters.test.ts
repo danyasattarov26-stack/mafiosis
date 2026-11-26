@@ -74,3 +74,10 @@ describe('custom blocks', () => {
     resetCustom();
   });
 });
+
+describe('boats', () => {
+  it('a rowing boat can be made at a workbench', () => {
+    expect(ITEM.boat).toBeTruthy();
+    expect(RECIPES.some(r => r.out === 'boat' && r.at === 'workbench')).toBe(true);
+  });
+});

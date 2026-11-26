@@ -24,7 +24,7 @@ export class Player {
   onStep: (blockBelow: number) => void = () => {};
   onHurt: (amount: number, cause: Cause) => void = () => {};
   onDowned: () => void = () => {};
-  autoStep = false; god = false;
+  autoStep = false; god = false; slowed = false;
 
   solidAt(w: World, x: number, y: number, z: number) {
     const id = w.get(Math.floor(x), Math.floor(y), Math.floor(z));
@@ -62,6 +62,7 @@ export class Player {
     if (sprinting) speed = 6.6;
     if (this.inWater) speed *= 0.55;
     if (this.stats.sick > 0.5) speed *= 0.85;
+    if (this.slowed) speed *= 0.45;
     const webbed = feet === B.cobweb || mid === B.cobweb;
     if (webbed) { speed *= 0.2; this.vel.y = Math.max(this.vel.y, -1.2); }
     // wish direction in world space

@@ -72,4 +72,10 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
   - polar bear, arctic fox, mammoth and others properly recoloured;
   - admin: teleport and build any structure in front of you;
   - health bars no longer show through walls.
+- [x] **Boats, animations and a new look:**
+  - rowing boats: place, board, row where you look, stop at the shore, pick them up again; saved and shared in co-op;
+  - first-person animations: axes and picks chop, swords slash, spears thrust, blocks get punched in, food goes to your mouth, mining loops while you hold;
+  - 3D swords, knives, spears, hammers and a bow you draw back (hold to pull, the camera zooms a little at full draw);
+  - chests open their own screen (the chest on top, your bags below) and their lids swing open in the world;
+  - new look for the menu, HUD and every panel: glass panels, bevelled slots, a glowing selected slot, numbered hotbar, glossy bars, a display font for titles.
 - [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

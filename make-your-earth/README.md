@@ -81,7 +81,8 @@ them to `public/mods/` and redeploying. See [MODS.md](MODS.md) for how to write 
 
 - **Monsters** come out at night and in dark caves: zombies, skeleton archers, skeleton warriors, giant spiders, cave spiders and cave beasts. Torches and lanterns stop them spawning nearby; zombies and skeletons burn at sunrise. Bandits roam by day and carry coins.
 - **Shields** go in the off-hand slot (next to your armour). They stop part of a hit from the front; crouch to block it all.
-- **Bow:** hold it and right-click; you need arrows.
+- **Bow:** hold right-click to draw it back (the longer you hold, the harder and further it shoots), let go to shoot. On a phone, a tap shoots. You need arrows.
+- **Boats:** make a rowing boat at a workbench (6 planks, 2 sticks). Right-click water to put it in, right-click the boat to climb in, look where you want to go and hold W (Shift rows harder). C or right-click gets you out onto the nearest shore; hit an empty boat to pick it up.
 - **Farming:** a hoe turns dirt or grass into farmland; plant seeds, carrots or potatoes on it. Crops grow in three stages; white dye (bone meal) speeds them up.
 - **Pets and riding:** give a wolf a bone (it may take a few) and it becomes your dog; wild cats like raw fish. Put a saddle on a horse, camel or zebra, then right-click to ride.
 - **Beds** set where your next life starts and skip the night (if no monsters are close).
