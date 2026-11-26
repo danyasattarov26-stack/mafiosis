@@ -31,6 +31,36 @@ import { forgetIcon } from '../render/textures';
 import { Ghost, place, capture, needs, type Blueprint } from './blueprints';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
+/** a first-person arm: sleeve, forearm and fist, stretched from a shoulder point to a hand point */
+interface Arm { g: THREE.Group; set: (shoulder: THREE.Vector3, hand: THREE.Vector3, elbow?: THREE.Vector3) => void; setSleeve: (c: string) => void }
+const SKIN = new THREE.MeshLambertMaterial({ color: '#c99a78' }), KNUCKLE = new THREE.MeshLambertMaterial({ color: '#b98a6a' });
+const Z = new THREE.Vector3(0, 0, 1);
+function makeArm(sleeveColor: string): Arm {
+  const g = new THREE.Group();
+  const sleeveMat = new THREE.MeshLambertMaterial({ color: sleeveColor }), cuffMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(sleeveColor).multiplyScalar(0.7) });
+  const unit = new THREE.BoxGeometry(1, 1, 1);
+  const fore = new THREE.Mesh(unit, SKIN), upper = new THREE.Mesh(unit, sleeveMat), cuff = new THREE.Mesh(unit, cuffMat);
+  const fist = new THREE.Group(), palm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.1), SKIN), knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.035), KNUCKLE), thumb = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.06), SKIN);
+  knuckles.position.set(0, 0.035, -0.045); thumb.position.set(-0.055, 0.015, -0.015); fist.add(palm, knuckles, thumb);
+  g.add(fore, upper, cuff, fist);
+  const seg = (m: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3, thick: number, extra = 0) => {
+    const d = b.clone().sub(a), len = d.length();
+    m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(Z, d.normalize());
+    m.scale.set(thick, thick, len + extra);
+  };
+  return {
+    g,
+    setSleeve: c => { sleeveMat.color.set(c); cuffMat.color.set(c).multiplyScalar(0.7); },
+    set: (shoulder, hand, elbow) => {
+      const e = elbow ?? shoulder.clone().lerp(hand, 0.5);
+      seg(fore, hand, e, 0.08, 0.04); seg(upper, e, shoulder, 0.1, 0.04);
+      const toE = e.clone().sub(hand).normalize();
+      cuff.position.copy(e).addScaledVector(toE, -0.02); cuff.quaternion.setFromUnitVectors(Z, toE); cuff.scale.set(0.11, 0.11, 0.05);
+      fist.position.copy(hand); fist.quaternion.setFromUnitVectors(Z, toE);
+    },
+  };
+}
+
 /** first-person moves, as keyframes: [time, x, y, z, rotX, rotY, rotZ] */
 const POSES: Record<string, number[][]> = {
   chop: [[0, 0, 0, 0, 0, 0, 0], [0.25, 0.02, 0.1, 0.05, 0.95, 0, -0.15], [0.55, -0.12, -0.17, -0.22, -1.35, 0, 0.3], [1, 0, 0, 0, 0, 0, 0]],
@@ -179,7 +209,11 @@ export class Game {
     this.animals.setWorld(this.world, this.dim);
     this.hemi = new THREE.HemisphereLight('#cfe4ff', '#5a4a3a', 1.6); this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff3dd', 1.8); this.sun.position.set(30, 80, 20); this.scene.add(this.sun);
-    this.scene.add(this.camera); this.camera.add(this.held); this.camera.add(this.offHeld);
+    this.scene.add(this.camera);
+    // your hands live in their own little scene, drawn after the world so walls never hide them
+    this.fpScene.add(this.held, this.offHeld, this.fpHemi, this.fpSun); this.fpSun.position.set(0.6, 1, 0.8);
+    this.armL = makeArm(this.sleeveColor()); this.armR = makeArm(this.sleeveColor());
+    this.fpScene.add(this.armL.g, this.armR.g, this.bowHold);
     // block outline and cracks
     this.highlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)), new THREE.LineBasicMaterial({ color: '#111', transparent: true, opacity: 0.6 }));
     this.highlight.visible = false; this.scene.add(this.highlight);
@@ -308,6 +342,21 @@ export class Game {
   }
 
   resize(w: number, h: number) { this.camera.aspect = w / h; this.camera.fov = settings.fov; this.camera.updateProjectionMatrix(); }
+  fpScene = new THREE.Scene(); private fpCam = new THREE.PerspectiveCamera(70, 1, 0.01, 10);
+  private fpHemi = new THREE.HemisphereLight('#cfe4ff', '#5a4a3a', 1.6); private fpSun = new THREE.DirectionalLight('#fff3dd', 1.4);
+  /** draw the world, then your hands on top */
+  render(r: THREE.WebGLRenderer) {
+    r.autoClear = false; r.clear();
+    r.render(this.scene, this.camera);
+    this.fpCam.aspect = this.camera.aspect; this.fpCam.fov = this.camera.fov; this.fpCam.updateProjectionMatrix();
+    this.fpCam.rotation.z = this.camera.rotation.z;           // the hurt tilt moves your hands too
+    // hands are lit like the world around you: daylight outside, torchlight or dark in caves
+    const light = Math.max(0.12, Math.min(1, this.sunLevel * (this.skyAtHead ?? 1) + this.blockGlow * 0.8));
+    this.fpHemi.intensity = 0.35 + light * 1.25; this.fpSun.intensity = light * 1.2;
+    r.clearDepth(); r.render(this.fpScene, this.fpCam);
+    r.autoClear = true;
+  }
+  private skyAtHead = 1; private blockGlow = 0;
 
   // ======================= frame =======================
   update(dt: number) {
@@ -1109,6 +1158,10 @@ export class Game {
       if (id === B.campfire || id === B.fire || id === B.lava || id === B.furnace) fire = Math.max(fire, 1 - Math.hypot(dx, dz) / 6);
     }
     this.nearFire = fire;
+    this.skyAtHead = this.world.surface(Math.floor(p.x), Math.floor(p.z)) <= p.y + 2 ? 1 : 0.25;
+    let glow = 0;
+    for (let dy = -2; dy <= 3; dy++) for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) { const id = this.world.get(Math.floor(p.x) + dx, Math.floor(p.y) + dy, Math.floor(p.z) + dz); if (id > 0 && (BLOCKS[id].light ?? 0) >= 9) glow = Math.max(glow, 1 - Math.hypot(dx, dy, dz) / 7); }
+    this.blockGlow = glow;
     // stations within reach
     this.stations = new Set(['hand']);
     for (let dy = -2; dy <= 2; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
@@ -1299,7 +1352,11 @@ export class Game {
   // ---- first-person animations: each kind of tool moves its own way ----
   private act: { kind: string; t: number; dur: number } | null = null;
   private mining = false; private mineT = 0; private bowPull: ((k: number) => void) | null = null;
+  // two-handed holds (the bow): a left and a right arm that reach for points in front of you
+  private armL!: Arm; private armR!: Arm; private bowHold = new THREE.Group(); private twoHand = false;
+  private sleeveColor() { return ['#6b4a2b', '#2f5d9a', '#5a6a3a', '#7a2a2a'][this.look % 4]; }
   private startAct(kind: string, dur: number) { this.act = { kind, t: 0, dur }; }
+  private bowHoldPos = new THREE.Vector3(-0.34, -0.32, -0.78); private handR = new THREE.Vector3(0.32, -0.4, -0.62);
   private swingKind() {
     const tt = ITEM[this.inv.held()?.k ?? '']?.tool?.type;
     return tt === 'sword' || tt === 'knife' ? 'slash' : tt === 'spear' ? 'thrust' : tt ? 'chop' : 'punch';
@@ -1330,15 +1387,35 @@ export class Game {
     } else this.bowPull?.(0);
     const want = settings.fov - (this.bowCharge > 0 ? this.bowCharge * 9 : 0);
     if (Math.abs(this.camera.fov - want) > 0.05) { this.camera.fov += (want - this.camera.fov) * Math.min(1, dt * 10); this.camera.updateProjectionMatrix(); }
-    this.held.position.set(0.44 + o[0], -0.46 + bob + o[1], -0.6 + o[2]);
+    const empty = !this.heldKey;     // an empty hand comes up into view a little
+    this.held.position.set(0.4 + o[0] - (empty ? 0.06 : 0), -0.36 + bob + o[1] + (empty ? 0.1 : 0), -0.62 + o[2]);
     this.held.rotation.set(o[3], 0.15 + o[4], o[5]);
-    this.held.visible = this.player.downed <= 0 && !this.player.dead && !this.riding;
+    const show = this.player.downed <= 0 && !this.player.dead && !this.riding;
+    this.held.visible = show && !this.twoHand;
+    this.armL.g.visible = this.armR.g.visible = this.bowHold.visible = show && this.twoHand;
+    if (this.twoHand) {
+      // left hand holds the bow out; drawing raises it to the middle and the right hand pulls the string to your cheek
+      const k = this.bowCharge >= 0 ? this.bowCharge : 0, drawing = this.bowCharge >= 0;
+      const rel = this.act?.kind === 'release' ? Math.max(0, 1 - this.act.t / this.act.dur) : 0;
+      const sh = k >= 1 ? (Math.random() - 0.5) * 0.006 : 0;
+      const grip = drawing || rel > 0 ? new THREE.Vector3(-0.06 + sh, -0.1 + bob + sh, -1.2) : new THREE.Vector3(-0.3, -0.28 + bob, -0.8);
+      this.bowHoldPos.lerp(grip, Math.min(1, dt * 14));
+      this.bowHold.position.copy(this.bowHoldPos);
+      this.bowHold.rotation.set(0, drawing ? 0 : 0.5, drawing ? 0.1 : 0.2);
+      const nock = this.bowHoldPos.clone().add(new THREE.Vector3(0, 0, 0.28 + 0.38 * k));
+      const restR = new THREE.Vector3(0.32, -0.4 + bob, -0.62);
+      const handR = drawing ? nock : rel > 0 ? restR.clone().lerp(nock, rel) : restR;
+      this.handR.lerp(handR, Math.min(1, dt * (drawing ? 30 : 12)));
+      this.armL.set(new THREE.Vector3(-0.4, -0.8, -0.5), this.bowHoldPos);
+      const elbowR = drawing ? new THREE.Vector3(0.6, -0.26 + bob, -0.8 + 0.12 * k) : new THREE.Vector3(0.42, -0.6, -0.55);
+      this.armR.set(new THREE.Vector3(0.6, -0.9, -0.6), this.handR, elbowR);
+    }
     // shield on the left: raised while crouching, bumps when it takes a hit
     const ok = this.inv.offhand?.k ?? '';
     if (ok !== this.offKey) { this.offKey = ok; this.buildOffhand(ok); }
     this.shieldBump = Math.max(0, this.shieldBump - dt);
     const up = this.player.crouching ? 1 : 0, bump = Math.sin(this.shieldBump / 0.3 * Math.PI) * 0.06;
-    this.offHeld.position.set(-0.5 + up * 0.22, -0.5 + up * 0.18 + bob, -0.62 + up * 0.12 + bump);
+    this.offHeld.position.set(-0.52 + up * 0.24, -0.46 + up * 0.2 + bob, -0.7 + up * 0.12 + bump);
     this.offHeld.rotation.set(0, 0.35 - up * 0.3, 0);
     this.offHeld.visible = this.held.visible;
   }
@@ -1348,22 +1425,32 @@ export class Game {
     if (d.shield) {
       const g = new THREE.Group();
       const face = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.52, 0.04), new THREE.MeshLambertMaterial({ color: d.color }));
-      const rim = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.56, 0.03), new THREE.MeshLambertMaterial({ color: d.color2 ?? '#4a4d52' })); rim.position.z = 0.02;
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.56, 0.03), new THREE.MeshLambertMaterial({ color: '#8a6a44' })); rim.position.z = 0.02;
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.03), new THREE.MeshLambertMaterial({ color: '#4a3020' })); strap.position.set(0, 0, 0.045); g.add(strap);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.02), new THREE.MeshLambertMaterial({ color: d.color2 ?? '#4a4d52' })); edge.position.z = 0.0; g.add(edge);
       const boss = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.05), new THREE.MeshLambertMaterial({ color: d.color2 ?? '#4a4d52' })); boss.position.z = -0.03;
-      g.add(rim, face, boss); this.offHeld.add(g); return;
+      g.add(rim, face, boss); this.offHeld.add(g);
+      g.scale.setScalar(0.85);
+      const arm = makeArm(this.sleeveColor()); arm.set(new THREE.Vector3(0.12, -0.55, 0.55), new THREE.Vector3(0.0, -0.04, 0.08), new THREE.Vector3(0.05, -0.25, 0.3)); this.offHeld.add(arm.g);
+      return;
     }
     const tex = new THREE.TextureLoader().load(itemIcon(key)); tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }));
     this.offHeld.add(sp);
   }
   private async buildHeld(key: string) {
-    this.held.clear();
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: '#c99a78' }));
-    arm.position.set(0.05, -0.05, 0.25); this.held.add(arm);
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.2), new THREE.MeshLambertMaterial({ color: ['#6b4a2b', '#2f5d9a', '#5a6a3a', '#7a2a2a'][this.look % 4] }));
-    sleeve.position.set(0.05, -0.05, 0.45); this.held.add(sleeve);
+    this.held.clear(); this.bowHold.clear(); this.twoHand = false;
+    const arm = makeArm(this.sleeveColor());
+    arm.set(new THREE.Vector3(0.16, -0.5, 0.75), new THREE.Vector3(0.0, -0.05, 0.03), new THREE.Vector3(0.1, -0.22, 0.36)); this.held.add(arm.g);
+    this.armL.setSleeve(this.sleeveColor()); this.armR.setSleeve(this.sleeveColor());
     if (!key) return;
     const d = ITEM[key];
+    if (key === 'bow') {
+      // the bow is held in the left hand; the right hand draws the string
+      const made = buildWeapon(d)!; made.g.rotation.set(0, Math.PI / 2, 0); made.g.position.set(0, 0, 0.36);
+      this.bowHold.add(made.g); this.bowPull = made.pull ?? null; this.twoHand = true;
+      return;
+    }
     if (d?.block != null) {
       const six = tiles6(d.block), mats = six.map(tile => { const tx = new THREE.CanvasTexture(this.atlas.canvasFor(tile)); tx.magFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: tx, transparent: true, alphaTest: 0.4 }); });
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), mats); cube.position.set(-0.02, 0.14, -0.14); cube.rotation.y = 0.6; this.held.add(cube);

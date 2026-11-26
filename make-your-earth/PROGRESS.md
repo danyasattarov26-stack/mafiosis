@@ -78,4 +78,5 @@ Milestones re-scoped by the author: 5-player browser co-op, no accounts, servers
   - 3D swords, knives, spears, hammers and a bow you draw back (hold to pull, the camera zooms a little at full draw);
   - chests open their own screen (the chest on top, your bags below) and their lids swing open in the world;
   - new look for the menu, HUD and every panel: glass panels, bevelled slots, a glowing selected slot, numbered hotbar, glossy bars, a display font for titles.
+- [x] **Arms:** proper first-person arms (sleeve, elbow, forearm, fist) holding whatever you carry; the bow is held with both hands (left hand holds it, right hand draws the string); a shield shows its wooden back and your arm. Hands are drawn on top of the world so walls never hide them, and they're lit like the place you're standing in.
 - [~] M9 Polish: in-game admin panel for the world owner (F2) done; mobile tuning on real devices still to do

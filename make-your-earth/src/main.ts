@@ -196,7 +196,7 @@ renderer.setAnimationLoop(now => {
   if (hud && session) hud.coop = { code: session.room.code, players: session.players() };
   hud?.frame();
   input.endFrame();
-  renderer.render(game.scene, game.camera);
+  game.render(renderer);
 });
 
 let overlay: BlockMaker | Admin | null = null;
