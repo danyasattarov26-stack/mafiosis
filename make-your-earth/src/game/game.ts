@@ -59,7 +59,7 @@ function buildWeapon(d: { key: string; color: string; tool?: { type: string } })
     const L = type === 'sword' ? 0.62 : 0.3;
     box(0.06, L, 0.016, metal, 0, 0.1 + L / 2, 0); box(0.022, L * 0.9, 0.02, new THREE.MeshLambertMaterial({ color: new THREE.Color(d.color).multiplyScalar(0.75) }), 0, 0.1 + L / 2, 0);
     box(0.2, 0.035, 0.05, dark, 0, 0.1, 0); box(0.04, 0.16, 0.04, wood, 0, 0.0, 0); box(0.055, 0.04, 0.055, dark, 0, -0.09, 0);
-    g.rotation.set(-0.55, 0, -0.15); g.position.set(0, -0.08, -0.12);
+    g.rotation.set(-0.95, 0.2, 0.45); g.position.set(0, -0.1, -0.1);
   } else if (type === 'spear') {
     box(0.035, 1.25, 0.035, wood, 0, 0.3, 0);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), metal); tip.position.y = 1.02; g.add(tip);
@@ -70,15 +70,15 @@ function buildWeapon(d: { key: string; color: string; tool?: { type: string } })
   } else {
     // the bow: a curved stave, a string and an arrow that appears as you draw
     const stave = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.018, 5, 18, Math.PI * 0.86), wood);
-    stave.rotation.z = Math.PI / 2 + Math.PI * 0.07; g.add(stave);
-    const tipY = Math.sin(Math.PI * 0.43) * 0.36, tipX = -Math.cos(Math.PI * 0.43) * 0.36;
+    stave.rotation.z = -Math.PI * 0.43; g.add(stave);
+    const tipY = Math.sin(Math.PI * 0.43) * 0.36, tipX = Math.cos(Math.PI * 0.43) * 0.36;
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
     const str = new THREE.Line(sg, new THREE.LineBasicMaterial({ color: '#e8e2d0' })); g.add(str);
     const arrow = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.012, 0.012), new THREE.MeshLambertMaterial({ color: '#c8a870' })); shaft.position.x = 0.31; arrow.add(shaft);
     const head = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.07, 4), new THREE.MeshLambertMaterial({ color: '#6a6e74' })); head.rotation.z = -Math.PI / 2; head.position.x = 0.64; arrow.add(head);
     arrow.visible = false; g.add(arrow);
     const pull = (k: number) => {
-      const nock = tipX - 0.02 - k * 0.34, a = sg.getAttribute('position') as THREE.BufferAttribute;
+      const nock = tipX - k * 0.38, a = sg.getAttribute('position') as THREE.BufferAttribute;
       a.setXYZ(0, tipX, tipY, 0); a.setXYZ(1, nock, 0, 0); a.setXYZ(2, tipX, -tipY, 0); a.needsUpdate = true;
       arrow.visible = k > 0.02; arrow.position.set(nock, 0, 0);
     };
